@@ -1,41 +1,46 @@
 #ifndef WAVEFILE_H
 #define WAVEFILE_H
 
+#ifndef _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
+#endif
+
 #include <string>
 #include <vector>
 
 namespace wm {
 
-    struct chunk {
-        char id[4];
-        uint32_t size;
-    };
-
-    struct RIFFHeader {
-        chunk descriptor;   // "RIFF"
-        char type[4];       // "WAVE"
-    };
-
-    struct WAVEHeader {
-        chunk descriptor;
-        uint16_t audioFormat;
-        uint16_t numChannels;
-        uint32_t sampleRate;
-        uint32_t byteRate;
-        uint16_t blockAlign;
-        uint16_t bitsPerSample;
-    };
-
-    struct DATAHeader {
-        chunk descriptor;
-    };
-
-    struct CombinedHeader {
-        RIFFHeader riff;
-        WAVEHeader wave;
-    };
-
     class WaveFile {
+    private:
+        struct chunk {
+            char id[4];
+            uint32_t size;
+        };
+
+        struct RIFFHeader {
+            chunk descriptor;   // "RIFF"
+            char type[4];       // "WAVE"
+        };
+
+        struct WAVEHeader {
+            chunk descriptor;
+            uint16_t audioFormat;
+            uint16_t numChannels;
+            uint32_t sampleRate;
+            uint32_t byteRate;
+            uint16_t blockAlign;
+            uint16_t bitsPerSample;
+        };
+
+        struct DATAHeader {
+            chunk descriptor;
+        };
+
+        struct CombinedHeader {
+            RIFFHeader riff;
+            WAVEHeader wave;
+        };
+
     public:
         WaveFile(uint8_t* data, uint32_t dataSize, uint16_t numChannels,
             uint32_t sampleRate, uint16_t bitsPerSample);
@@ -71,6 +76,8 @@ namespace wm {
 
         static WaveFile mix(WaveFile& wav1, WaveFile& wav2, bool noClipping = true);
         static WaveFile join(WaveFile& wav1, WaveFile& wav2);
+
+        friend std::ostream& operator<<(std::ostream& os, const WaveFile& wav);
 
     private:
         void generateHeader(uint32_t dataLength, uint16_t numChannels, uint32_t sampleRate, uint16_t bitsPerSample);

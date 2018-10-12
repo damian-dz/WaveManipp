@@ -6,29 +6,6 @@
 
 namespace wm {
 
-    void displayHeaderData(CombinedHeader ch, DATAHeader dh)
-    {
-        std::cout << "ChunkID: " << std::string(ch.riff.descriptor.id)
-            .substr(0, sizeof(ch.riff.descriptor.id)) << std::endl;
-        std::cout << "ChunkSize: " << ch.riff.descriptor.size << std::endl;
-        std::cout << "Format: " << std::string(ch.riff.type)
-            .substr(0, sizeof(ch.riff.type)) << std::endl;
-        std::cout << "----------" << std::endl;
-        std::cout << "Subchunk1ID: " << std::string(ch.wave.descriptor.id)
-            .substr(0, sizeof(ch.wave.descriptor.id)) << std::endl;
-        std::cout << "Subchunk1Size: " << ch.wave.descriptor.size << std::endl;
-        std::cout << "AudioFormat: " << ch.wave.audioFormat << std::endl;
-        std::cout << "NumChannels: " << ch.wave.numChannels << std::endl;
-        std::cout << "SampleRate: " << ch.wave.sampleRate << std::endl;
-        std::cout << "ByteRate: " << ch.wave.byteRate << std::endl;
-        std::cout << "BlockAlign: " << ch.wave.blockAlign << std::endl;
-        std::cout << "BitsPerSample: " << ch.wave.bitsPerSample << std::endl;
-        std::cout << "----------" << std::endl;
-        std::cout << "Subchunk2ID: " << std::string(dh.descriptor.id)
-            .substr(0, sizeof(dh.descriptor.id)) << std::endl;
-        std::cout << "Subchunk2Size: " << dh.descriptor.size << std::endl << std::endl;
-    }
-
     WaveFile::WaveFile(uint8_t* data, uint32_t dataSize, uint16_t numChannels,
         uint32_t sampleRate, uint16_t bitsPerSample) :
         m_audioDataSize(dataSize),
@@ -36,7 +13,6 @@ namespace wm {
     {
         generateHeader(dataSize, numChannels, sampleRate, bitsPerSample);
         m_pAudioData = data;
-        displayHeaderData(m_combinedHeader, m_dataHeader);
     }
 
     WaveFile::WaveFile(uint32_t dataSize, uint16_t numChannels, uint32_t sampleRate,
@@ -62,9 +38,9 @@ namespace wm {
                 m_pAudioData[i] = uint8_t(roundf(((samples[i] + 1.f)) * 127.5f));
             }
         } else if (bitsPerSample == 16) {
-            int16_t* int16Data = (int16_t*)m_pAudioData;
+            int16_t* pInt16Data = (int16_t*)m_pAudioData;
             for (int i = 0; i < numSamples; ++i) {
-                int16Data[i] = int16_t(samples[i] * 32768);
+                pInt16Data[i] = int16_t(samples[i] * 32768);
             }
         } else if (bitsPerSample == 24) {
             for (size_t i = 0; i < m_audioDataSize; i += 3) {
@@ -103,12 +79,12 @@ namespace wm {
                 m_pAudioData[(i << 1) + 1] = uint8_t(roundf(((right[i] + 1.f)) * 127.5f));
             }
         } else if (bitsPerSample == 16) {
-            int16_t* int16Data = (int16_t*)m_pAudioData;
+            int16_t* pInt16Data = (int16_t*)m_pAudioData;
             for (int i = 0; i < left.size(); ++i) {
-                int16Data[i << 1] = int16_t(left[i] * 32768);
+                pInt16Data[i << 1] = int16_t(left[i] * 32768);
             }
             for (int i = 0; i < right.size(); ++i) {
-                int16Data[(i << 1) + 1] = int16_t(right[i] * 32768);
+                pInt16Data[(i << 1) + 1] = int16_t(right[i] * 32768);
             }
         } else if (bitsPerSample == 24) {
             uint8_t* pData = m_pAudioData;
@@ -127,12 +103,12 @@ namespace wm {
                 pData[j + 5] = val >> 24;
             }
         } else if (bitsPerSample == 32) {
-            float* floatData = (float*)m_pAudioData;
+            float* pFloatData = (float*)m_pAudioData;
             for (int i = 0; i < left.size(); ++i) {
-                floatData[i << 1] = left[i];
+                pFloatData[i << 1] = left[i];
             }
             for (int i = 0; i < right.size(); ++i) {
-                floatData[(i << 1) + 1] = right[i];
+                pFloatData[(i << 1) + 1] = right[i];
             }
         }
     }
@@ -151,7 +127,6 @@ namespace wm {
         m_pAudioData = (uint8_t*)std::malloc(m_audioDataSize);
         std::memcpy(m_pAudioData, wav.m_pAudioData, m_audioDataSize);
     }
-
 
     WaveFile::~WaveFile()
     {
@@ -183,7 +158,7 @@ namespace wm {
         m_dataHeader.descriptor.size = dataSize;
     }
 
-    bool peekForId(const std::string id, FILE* file)
+    bool peekForId(const std::string& id, FILE* file)
     {
         bool res = true;
         int pos = ftell(file);
@@ -225,7 +200,6 @@ namespace wm {
             findDataChunk(file);
         }
         fread(&m_dataHeader, 1, sizeof(DATAHeader), file);
-        displayHeaderData(m_combinedHeader, m_dataHeader);
         m_audioDataSize = m_dataHeader.descriptor.size;
         m_pAudioData = (uint8_t*)std::malloc(m_audioDataSize);
         fread(m_pAudioData, 1, m_audioDataSize, file);
@@ -257,9 +231,9 @@ namespace wm {
         float* tempData = new float[numSamples / step];
         float max = std::numeric_limits<float>::min();
         if (m_combinedHeader.wave.bitsPerSample == 16) {
-            int16_t* int16Data = (int16_t*)m_pAudioData;
+            int16_t* pInt16Data = (int16_t*)m_pAudioData;
             for (int i = offset; i < numSamples; i += step) {
-                float res = int16Data[i] / 32768.f;
+                float res = pInt16Data[i] / 32768.f;
                 if (abs(res) > max) {
                     max = abs(res);
                 }
@@ -275,9 +249,9 @@ namespace wm {
                 tempData[i / step / 3] = res;
             }
         } else if (m_combinedHeader.wave.bitsPerSample == 32) {
-            float* floatData = (float*)m_pAudioData;
+            float* pFloatData = (float*)m_pAudioData;
             for (int i = offset; i < numSamples; i += step) {
-                float res = floatData[i];
+                float res = pFloatData[i];
                 if (abs(res) > max) {
                     max = abs(res);
                 }
@@ -301,9 +275,9 @@ namespace wm {
                 pData[i + 2] = val >> 24;
             }
         } else if (m_combinedHeader.wave.bitsPerSample == 32) {
-            float* floatData = (float*)m_pAudioData;
+            float* pFloatData = (float*)m_pAudioData;
             for (int i = offset; i < numSamples; i += step) {
-                floatData[i] = tempData[i / step] * factor;
+                pFloatData[i] = tempData[i / step] * factor;
             }
         }
         delete[] tempData;
@@ -326,9 +300,9 @@ namespace wm {
                 result[i / step / 3] = (pData[i] << 8 | pData[i + 1] << 16 | pData[i + 2] << 24) / 2147483648.f;
             }
         } else if (m_combinedHeader.wave.bitsPerSample == 32) {
-            float* floatData = (float*)m_pAudioData;
+            float* pFloatData = (float*)m_pAudioData;
             for (int i = offset; i < numSamples; i += step) {
-                result[i / step] = floatData[i];
+                result[i / step] = pFloatData[i];
             }
         }
         return result;
@@ -406,7 +380,7 @@ namespace wm {
         }
         std::vector<float> result(resSize);
         if (m_combinedHeader.wave.bitsPerSample == 16) {
-            int16_t* int16Data = (int16_t*)m_pAudioData;
+            int16_t* pInt16Data = (int16_t*)m_pAudioData;
             for (int i = 0; i < resSize; ++i) {
                 double sum = 0.;
                 int endPoint = 0;
@@ -416,7 +390,7 @@ namespace wm {
                     endPoint = binLength * step;
                 }
                 for (int j = offset; j < endPoint; j += step) {
-                    sum += int16Data[i * binLength * step + j] / 32768.f;
+                    sum += pInt16Data[i * binLength * step + j] / 32768.f;
                 }
                 result[i] = (float)sum / binLength;
             }
@@ -532,7 +506,7 @@ namespace wm {
                     pData[i + 1] = val >> 16;
                     pData[i + 2] = val >> 24;
                 }
-                std:: free(m_pAudioData);
+                std::free(m_pAudioData);
                 m_pAudioData = NULL;
                 m_pAudioData = pData;
                 m_dataHeader.descriptor.size = uint32_t(m_dataHeader.descriptor.size * 3 / 2.);
@@ -541,7 +515,7 @@ namespace wm {
                 for (int i = 0; i < numSamples; ++i) {
                     pFloatData[i] = pInt16Data[i] / 32768.f;
                 }
-                std:: free(m_pAudioData);
+                std::free(m_pAudioData);
                 m_pAudioData = NULL;
                 m_pAudioData = (uint8_t*)pFloatData;
                 m_combinedHeader.wave.audioFormat = 3;
@@ -634,5 +608,29 @@ namespace wm {
             m_audioDataSize = newSize;
             m_combinedHeader.wave.numChannels = 1;
         }
+    }
+
+    std::ostream& operator<<(std::ostream& os, const WaveFile& wav)
+    {
+        os << "ChunkID: " << std::string(wav.m_combinedHeader.riff.descriptor.id)
+            .substr(0, sizeof(wav.m_combinedHeader.riff.descriptor.id)) << std::endl;
+        os << "ChunkSize: " << wav.m_combinedHeader.riff.descriptor.size << std::endl;
+        os << "Format: " << std::string(wav.m_combinedHeader.riff.type)
+            .substr(0, sizeof(wav.m_combinedHeader.riff.type)) << std::endl;
+        os << "----------" << std::endl;
+        os << "Subchunk1ID: " << std::string(wav.m_combinedHeader.riff.descriptor.id)
+            .substr(0, sizeof(wav.m_combinedHeader.wave.descriptor.id)) << std::endl;
+        os << "Subchunk1Size: " << wav.m_combinedHeader.wave.descriptor.size << std::endl;
+        os << "AudioFormat: " << wav.m_combinedHeader.wave.audioFormat << std::endl;
+        os << "NumChannels: " << wav.m_combinedHeader.wave.numChannels << std::endl;
+        os << "SampleRate: " << wav.m_combinedHeader.wave.sampleRate << std::endl;
+        os << "ByteRate: " << wav.m_combinedHeader.wave.byteRate << std::endl;
+        os << "BlockAlign: " << wav.m_combinedHeader.wave.blockAlign << std::endl;
+        os << "BitsPerSample: " << wav.m_combinedHeader.wave.bitsPerSample << std::endl;
+        os << "----------" << std::endl;
+        os << "Subchunk2ID: " << std::string(wav.m_dataHeader.descriptor.id)
+            .substr(0, sizeof(wav.m_dataHeader.descriptor.id)) << std::endl;
+        os << "Subchunk2Size: " << wav.m_dataHeader.descriptor.size << std::endl << std::endl;
+        return os;
     }
 }
