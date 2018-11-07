@@ -11,6 +11,7 @@ namespace wm {
         m_audioDataSize(dataSize),
         m_pAudioData(data)
     {
+        
         generateHeader(dataSize, numChannels, sampleRate, bitsPerSample);
         m_pAudioData = data;
     }
@@ -18,6 +19,7 @@ namespace wm {
     WaveFile::WaveFile(uint32_t dataSize, uint16_t numChannels, uint32_t sampleRate,
         uint16_t bitsPerSample)
     {
+        std::cout << "WaveFile created" << std::endl;
         generateHeader(dataSize, numChannels, sampleRate, bitsPerSample);
         m_pAudioData = (uint8_t*)std::malloc(dataSize);
     }
@@ -130,8 +132,11 @@ namespace wm {
 
     WaveFile::~WaveFile()
     {
+        std::cout << "WaveFile destroyed" << std::endl;
         if (m_pAudioData != NULL) {
-            std:: free(m_pAudioData);
+            std::free(m_pAudioData);
+            m_pAudioData = NULL;
+            std::cout << "WaveFile data freed" << std::endl;
         }
     }
 
@@ -161,63 +166,63 @@ namespace wm {
     bool peekForId(const std::string& id, FILE* file)
     {
         bool res = true;
-        int pos = ftell(file);
+        int pos = std::ftell(file);
         for (unsigned i = 0; i < id.size(); ++i) {
-            int c = fgetc(file);
+            int c = std::fgetc(file);
             if (id[i] != (char)c) {
                 res = false;
                 break;
             }
         }
-        fseek(file, pos, 0);
+        std::fseek(file, pos, 0);
         return res;
     }
 
     void findDataChunk(FILE *file)
     {
-        int pos = ftell(file) + 2;
-        fseek(file, pos, 0);
+        int pos = std::ftell(file) + 2;
+        std::fseek(file, pos, 0);
         std::string idData = "data";
         while (!peekForId(idData, file)) {
             pos += 2;
-            fseek(file, pos, 0);
+            std::fseek(file, pos, 0);
         }
     }
 
     void WaveFile::open(const std::string fileName)
     {
-        FILE* file = fopen(fileName.c_str(), "rb");
+        FILE* file = std::fopen(fileName.c_str(), "rb");
         if (!file) {
             throw "Failed to open the file.";
         }
-        fread(&m_combinedHeader, 1, sizeof(CombinedHeader), file);
+        std::fread(&m_combinedHeader, 1, sizeof(CombinedHeader), file);
 
         if (m_combinedHeader.wave.descriptor.size > 16) {
-            int pos = ftell(file);
-            fseek(file, pos + (m_combinedHeader.wave.descriptor.size - 16), 0);
+            int pos = std::ftell(file);
+            std::fseek(file, pos + (m_combinedHeader.wave.descriptor.size - 16), 0);
         }
         if (!peekForId(std::string("data"), file)) {
             findDataChunk(file);
         }
-        fread(&m_dataHeader, 1, sizeof(DATAHeader), file);
+        std::fread(&m_dataHeader, 1, sizeof(DATAHeader), file);
         m_audioDataSize = m_dataHeader.descriptor.size;
         m_pAudioData = (uint8_t*)std::malloc(m_audioDataSize);
-        fread(m_pAudioData, 1, m_audioDataSize, file);
-        fclose(file);
+        std::fread(m_pAudioData, 1, m_audioDataSize, file);
+        std::fclose(file);
     }
 
     void WaveFile::saveAs(const std::string fileName)
     {
-        FILE* file = fopen(fileName.c_str(), "wb");
+        FILE* file = std::fopen(fileName.c_str(), "wb");
         if (!file) {
             throw "Failed to create the file.";
         }
         m_combinedHeader.riff.descriptor.size = m_audioDataSize + 36;
         m_combinedHeader.wave.descriptor.size = 16;
-        fwrite(&m_combinedHeader, 1, sizeof(CombinedHeader), file);
-        fwrite(&m_dataHeader, 1, sizeof(DATAHeader), file);
-        fwrite(m_pAudioData, 1, m_audioDataSize, file);
-        fclose(file);
+        std::fwrite(&m_combinedHeader, 1, sizeof(CombinedHeader), file);
+        std::fwrite(&m_dataHeader, 1, sizeof(DATAHeader), file);
+        std::fwrite(m_pAudioData, 1, m_audioDataSize, file);
+        std::fclose(file);
     }
 
     void WaveFile::changeVolume(float volume, int channelNumber)
@@ -466,9 +471,24 @@ namespace wm {
         delete[] tempData;
     }
 
+    uint8_t* WaveFile::audioData() const
+    {
+        return m_pAudioData;
+    }
+
+    uint32_t WaveFile::audioDataSize() const
+    {
+        return m_audioDataSize;
+    }
+
     uint16_t WaveFile::numChannels() const
     {
         return m_combinedHeader.wave.numChannels;
+    }
+
+    uint16_t WaveFile::sampleBitDepth() const
+    {
+        return m_combinedHeader.wave.bitsPerSample;
     }
 
     uint32_t WaveFile::sampleRate() const
@@ -608,6 +628,16 @@ namespace wm {
             m_audioDataSize = newSize;
             m_combinedHeader.wave.numChannels = 1;
         }
+    }
+
+    WaveFile WaveFile::mix(WaveFile &wav1, WaveFile &wav2, bool noClipping)
+    {
+        return WaveFile(wav1);
+    }
+
+    WaveFile WaveFile::join(WaveFile &wav1, WaveFile &wav2)
+    {
+        return WaveFile(wav1);
     }
 
     std::ostream& operator<<(std::ostream& os, const WaveFile& wav)

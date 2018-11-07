@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 2.8)
 project(WaveManip)
 include_directories(hdr)
-set(SOURCE_LIB src/WaveFile.cpp hdr/WaveFile.h)
+set(SOURCE_LIB src/WaveFile.cpp src/WaveBuilder.cpp hdr/WaveFile.h hdr/WaveBuilder.h)
 add_library(WaveManip STATIC ${SOURCE_LIB})

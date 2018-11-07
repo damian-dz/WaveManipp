@@ -42,19 +42,70 @@ namespace wm {
         };
 
     public:
+        /*!
+         * \brief Constructs a WaveFile object from the provided byte data.
+         * \param data &mdash; a pointer to the audio data
+         * \param dataSize &mdash; size of the data in bytes
+         * \param numChannels &mdash; target number of channels
+         * \param sampleRate &mdash; target sample rate
+         * \param bitsPerSample &mdash; sample bit depth
+         */
         WaveFile(uint8_t* data, uint32_t dataSize, uint16_t numChannels,
             uint32_t sampleRate, uint16_t bitsPerSample);
+
+        /*!
+         * \brief Constructs a WaveFile object and reserves the amount of memory specified by <i>dataSize</i>.
+         * \param dataSize &mdash; size of the data in bytes
+         * \param numChannels &mdash; target number of channels
+         * \param sampleRate &mdash; target sample rate
+         * \param bitsPerSample &mdash; sample bit depth
+         */
         WaveFile(uint32_t dataSize, uint16_t numChannels, uint32_t sampleRate,
             uint16_t bitsPerSample);
+
+        /*!
+         * \brief Constructs a WaveFile object with the specified parameters from the provided floating-point data.
+         * \param samples &mdash; floating-point audio data
+         * \param numChannels &mdash; target number of channels
+         * \param sampleRate &mdash; target sample rate
+         * \param bitsPerSample &mdash; sample bit depth
+         */
         WaveFile(const std::vector<float>& samples, uint16_t numChannels,
             uint32_t sampleRate, uint16_t bitsPerSample);
+
+        /*!
+         * \brief Constructs a stereo WaveFile object with the specified parameters from the provided floating-point data.
+         * \param left &mdash; left channel samples
+         * \param right &mdash; right channel samples
+         * \param sampleRate &mdash; target sample rate
+         * \param bitsPerSample &mdash; sample bit depth
+         */
         WaveFile(const std::vector<float>& left, const std::vector<float>& right,
             uint32_t sampleRate, uint16_t bitsPerSample);
+
+        /*!
+         * \brief Constructs a WaveFile object from the specified file.
+         * \param fileName &mdash; the name of the file
+         * \param right &mdash; right channel samples
+         * \param sampleRate &mdash; target sample rate
+         * \param bitsPerSample &mdash; sample bit depth
+         */
         WaveFile(const std::string fileName);
+
+        /*!
+         * \brief Copies the WaveFile object's data into another object.
+         */
         WaveFile(const WaveFile& wav);
 
         ~WaveFile();
 
+        /*!
+         * \brief Constructs a WaveFile object from the specified file.
+         * \param fileName &mdash; the name of the file
+         * \param right &mdash; right channel samples
+         * \param sampleRate &mdash; target sample rate
+         * \param bitsPerSample &mdash; sample bit depth
+         */
         void open(const std::string fileName);
         void saveAs(const std::string fileName);
         void changeVolume(float volume, int channelNumber = 0);
@@ -65,7 +116,11 @@ namespace wm {
         std::vector<float> getAveragedOutAudioData(int binLength, int channelNumber = 0);
         void normalize(float newMin, float newMax, int channelNumber = 0);
 
+        uint8_t* audioData() const;
+        uint32_t audioDataSize() const;
+
         uint16_t numChannels() const;
+        uint16_t sampleBitDepth() const;
         uint32_t sampleRate() const;
         void setSampleRate(int sampleRate);
         void setSampleBitDepth(int bitDepth);
