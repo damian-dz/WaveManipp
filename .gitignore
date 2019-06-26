@@ -1,0 +1,6 @@
+.vs/
+bin/
+testing/
+WaveManip/
+x64/
+*.sln
