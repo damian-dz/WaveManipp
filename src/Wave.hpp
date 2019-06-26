@@ -78,7 +78,9 @@ namespace wm {
         void changeVolume(float volume, Channels channels = Both);
         void downmixToMono();
         void swapChannels();
+        void zeroInitHeader();
 
+        void saveAs(const char* c_pFilename, uint32_t sampleRate = 44100, uint16_t sampleBitDepth = 16, size_t bufferSize = 24576);
         void saveAs(const std::string &filename, uint32_t sampleRate = 44100, uint16_t sampleBitDepth = 16, size_t bufferSize = 24576);
         void writeData(std::FILE *pFile, size_t bufferSize = 24576);
 
@@ -87,8 +89,7 @@ namespace wm {
         uint32_t getNumSamples() const;
         uint16_t getSampleBitDepth() const;
 
-        void zeroInitHeader();
-
+        
         friend std::ostream &operator<<(std::ostream &os, const Wave &wav);
     };
 }

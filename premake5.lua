@@ -6,7 +6,6 @@ project "WaveManip"
     language "C++"
 	location "WaveManip"
     kind "StaticLib"
-	includedirs { "src/" } 
 	targetdir "bin/%{cfg.buildcfg}"
 	files {
         "src/**.hpp",

@@ -3,6 +3,9 @@
 
 namespace wm {
 
+    /*!
+     * \brief Constructs an empty Wave object with a zero-initialized header.
+     */
     Wave::Wave():
         m_pData(nullptr),
         m_dataSize(0)
@@ -10,7 +13,7 @@ namespace wm {
         zeroInitHeader();
     }
 
-    Wave::Wave(const char* c_pFilename)
+    Wave::Wave(const char *c_pFilename)
     {
         zeroInitHeader();
         open(c_pFilename);
@@ -22,6 +25,9 @@ namespace wm {
         open(filename);
     }
 
+    /*!
+     * \brief Destroys the Wave object and frees its associated resources.
+     */
     Wave::~Wave()
     {
         if (m_pData != nullptr) {
@@ -93,6 +99,11 @@ namespace wm {
         }
     }
 
+    /*!
+     * \brief Loads the file specified by its name into memory.
+     * \param c_pFilename &mdash; the name of the file
+     * \param bufferSize &mdash; the size of the intermediate buffer (default 24576)
+     */
     void Wave::open(const char *c_pFilename, size_t bufferSize)
     {
         std::FILE *pFile = std::fopen(c_pFilename, "rb");
@@ -119,6 +130,11 @@ namespace wm {
         std::fclose(pFile);
     }
 
+    /*!
+     * \brief Loads the file specified by its name into memory.
+     * \param filename &mdash; the name of the file
+     * \param bufferSize &mdash; the size of the intermediate buffer (default 24576)
+     */
     void Wave::open(const std::string &filename, size_t bufferSize)
     {
         open(filename.c_str(), bufferSize);
@@ -146,11 +162,9 @@ namespace wm {
         size_t offset = 0;
         if (sampleBitDepth == 8) {
             while (offset < numSamples) {
-                int numBytesToRead = std::min(bufferSize, dataSize - offset);
-                std::cout << numBytesToRead << std::endl;
+                size_t numBytesToRead = std::min(bufferSize, dataSize - offset);
                 std::fread(pBuffer, 1, numBytesToRead, pFile);
                 int numBufferFrames = numBytesToRead / frameSize;
-                std::cout << numBufferFrames << std::endl;
                 for (int y = 0; y < numBufferFrames; ++y) {
                     for (int x = 0; x < numChannels; ++x) {
                         int i = y * numChannels + x;
@@ -161,8 +175,7 @@ namespace wm {
             }
         } else if (sampleBitDepth == 16) {
             while (offset < numSamples) {
-                int numBytesToRead = std::min(bufferSize, dataSize - offset * 2);
-                std::fread(pBuffer, 1, numBytesToRead, pFile);
+                size_t numBytesToRead = std::min(bufferSize, dataSize - offset * 2);
                 int numBufferFrames = numBytesToRead / frameSize;
                 int16_t *pI16Buffer = reinterpret_cast<int16_t *>(pBuffer);
                 for (int y = 0; y < numBufferFrames; ++y) {
@@ -175,7 +188,7 @@ namespace wm {
             }
         } else if (sampleBitDepth == 24) {
             while (offset < numSamples) {
-                int numBytesToRead = std::min(bufferSize, dataSize - offset * 3);
+                size_t numBytesToRead = std::min(bufferSize, dataSize - offset * 3);
                 std::fread(pBuffer, 1, numBytesToRead, pFile);
                 int numBufferFrames = numBytesToRead / frameSize;
                 for (int y = 0; y < numBufferFrames; ++y) {
@@ -189,7 +202,7 @@ namespace wm {
             }     
         } else if (sampleBitDepth == 32) {
             while (offset < numSamples) {
-                int numBytesToRead = std::min(bufferSize, dataSize - offset * 4);
+                size_t numBytesToRead = std::min(bufferSize, dataSize - offset * 4);
                 std::fread(pBuffer, 1, numBytesToRead, pFile);
                 int numBufferFrames = numBytesToRead / frameSize;
                 float *pF32Buffer = reinterpret_cast<float *>(pBuffer);
@@ -280,11 +293,25 @@ namespace wm {
         }
     }
 
+    void Wave::zeroInitHeader()
+    {
+        std::memset(&m_combinedHeader, 0, sizeof(CombinedHeader));
+        std::memset(&m_dataHeader, 0, sizeof(DATAHeader));
+    }
+
+    /*!
+     * \brief Gets the number of bytes necessary to store the audio data with the current settings.
+     * \result The data size.
+     */
     uint32_t Wave::getDataSize() const
     {
         return m_dataHeader.descriptor.size;
     }
 
+    /*!
+     * \brief Gets the number of channels for the audio data.
+     * \result The number of channels.
+     */
     uint16_t Wave::getNumChannels() const
     {
         return m_combinedHeader.wave.numChannels;
@@ -295,23 +322,32 @@ namespace wm {
         return m_numSamples;
     }
 
+    /*!
+     * \brief Gets the number of bits currently used to represent a single audio sample.
+     * \result The sample bit depth.
+     */
     uint16_t Wave::getSampleBitDepth() const
     {
         return m_combinedHeader.wave.bitsPerSample;
     }
 
-    void Wave::saveAs(const std::string &filename, uint32_t sampleRate, uint16_t sampleBitDepth, size_t bufferSize)
+    void Wave::saveAs(const char *c_pFilename, uint32_t sampleRate, uint16_t sampleBitDepth, size_t bufferSize)
     {
-        FILE *pFile = std::fopen(filename.c_str(), "wb");
+        FILE *pFile = std::fopen(c_pFilename, "wb");
         if (!pFile) {
             throwError("Failed to create the file.",
-                       "Wave::readData(std::FILE *, size_t)");
+                "Wave::saveAs(const char *, uint32_t, uint16_t, size_t)");
         }
         generateHeader(m_numSamples * sampleBitDepth / 8, getNumChannels(), sampleRate, sampleBitDepth);
         std::fwrite(&m_combinedHeader, 1, sizeof(CombinedHeader), pFile);
         std::fwrite(&m_dataHeader, 1, sizeof(DATAHeader), pFile);
         writeData(pFile, bufferSize);
         std::fclose(pFile);
+    }
+
+    void Wave::saveAs(const std::string &filename, uint32_t sampleRate, uint16_t sampleBitDepth, size_t bufferSize)
+    {
+        saveAs(filename.c_str(), sampleRate, sampleBitDepth, bufferSize);
     }
 
     void Wave::writeData(std::FILE *pFile, size_t bufferSize)
@@ -336,7 +372,7 @@ namespace wm {
         size_t offset = 0;
         if (sampleBitDepth == 8) {
             while (offset < numSamples) {
-                int numBytesToWrite = std::min(bufferSize, dataSize - offset);
+                size_t numBytesToWrite = std::min(bufferSize, dataSize - offset);
                 int numBufferFrames = numBytesToWrite / frameSize;
                 for (int y = 0; y < numBufferFrames; ++y) {
                     for (int x = 0; x < numChannels; ++x) {
@@ -349,7 +385,7 @@ namespace wm {
             }
         } else if (sampleBitDepth == 16) {
             while (offset < numSamples) {
-                int numBytesToWrite = std::min(bufferSize, dataSize - offset * 2);
+                size_t numBytesToWrite = std::min(bufferSize, dataSize - offset * 2);
                 int numBufferFrames = numBytesToWrite / frameSize;
                 int16_t *pI16Buffer = reinterpret_cast<int16_t *>(pBuffer);
                 for (int y = 0; y < numBufferFrames; ++y) {
@@ -363,7 +399,7 @@ namespace wm {
             }
         } else if (sampleBitDepth == 24) {
             while (offset < numSamples) {
-                int numBytesToWrite = std::min(bufferSize, dataSize - offset * 3);                
+                size_t numBytesToWrite = std::min(bufferSize, dataSize - offset * 3);
                 int numBufferFrames = numBytesToWrite / frameSize;
                 for (int y = 0; y < numBufferFrames; ++y) {
                     for (int x = 0; x < numChannels; ++x) {
@@ -379,7 +415,7 @@ namespace wm {
             }
         } else if (sampleBitDepth == 32) {
             while (offset < numSamples) {
-                int numBytesToWrite = std::min(bufferSize, dataSize - offset * 4);
+                size_t numBytesToWrite = std::min(bufferSize, dataSize - offset * 4);
                 int numBufferFrames = numBytesToWrite / frameSize;
                 float *pF32Buffer = reinterpret_cast<float *>(pBuffer);
                 for (int y = 0; y < numBufferFrames; ++y) {
@@ -397,12 +433,6 @@ namespace wm {
                        "Wave::writeData(std::FILE *, size_t)");
         }
         std::free(pBuffer);
-    }
-
-    void Wave::zeroInitHeader()
-    {
-        std::memset(&m_combinedHeader, 0, sizeof(CombinedHeader));
-        std::memset(&m_dataHeader, 0, sizeof(DATAHeader));
     }
 
     std::ostream &operator<<(std::ostream &os, const Wave &wav)
