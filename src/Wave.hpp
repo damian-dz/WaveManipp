@@ -20,6 +20,9 @@ namespace wm {
         Left = 0, Right = 1, Both = 2,
     };
 
+    /*!
+     * \brief A class that represents an audio file in memory.
+     */
     class Wave {
         static_assert(std::numeric_limits<float>::is_iec559, "float must be IEEE 754");
         static_assert(sizeof(float) == sizeof(uint32_t), "float must be 32 bits wide");
@@ -70,8 +73,8 @@ namespace wm {
 
         ~Wave();
 
-        void open(const char* c_pFilename, size_t bufferSize = 24576);
-        void open(const std::string& filename, size_t bufferSize = 24576);
+        void open(const char *c_pFilename, size_t bufferSize = 24576);
+        void open(const std::string &filename, size_t bufferSize = 24576);
         void readData(std::FILE *pFile, size_t bufferSize = 24576);
 
         std::vector<float> getBuffer(size_t offset, size_t sampleCount, Channels channels = Both) const;
@@ -80,7 +83,7 @@ namespace wm {
         void swapChannels();
         void zeroInitHeader();
 
-        void saveAs(const char* c_pFilename, uint32_t sampleRate = 44100, uint16_t sampleBitDepth = 16, size_t bufferSize = 24576);
+        void saveAs(const char *c_pFilename, uint32_t sampleRate = 44100, uint16_t sampleBitDepth = 16, size_t bufferSize = 24576);
         void saveAs(const std::string &filename, uint32_t sampleRate = 44100, uint16_t sampleBitDepth = 16, size_t bufferSize = 24576);
         void writeData(std::FILE *pFile, size_t bufferSize = 24576);
 
@@ -88,10 +91,9 @@ namespace wm {
         uint16_t getNumChannels() const;
         uint32_t getNumSamples() const;
         uint16_t getSampleBitDepth() const;
-
-        
+      
         friend std::ostream &operator<<(std::ostream &os, const Wave &wav);
     };
 }
 
-#endif !WAVE_H
+#endif // !WAVE_H
