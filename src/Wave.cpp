@@ -40,7 +40,7 @@ namespace wm {
     {
         if (bitsPerSample != 8 && bitsPerSample != 16 && bitsPerSample != 24 && bitsPerSample != 32) {
             throwError("Bit depth not supported.",
-                       "Wave::generateHeader(uint32_t, uint16_t, uint32_t, uint16_t)");
+                "Wave::generateHeader(uint32_t, uint16_t, uint32_t, uint16_t)");
         }
 
         std::memcpy(m_combinedHeader.riff.descriptor.id, "RIFF", 4);
@@ -60,24 +60,26 @@ namespace wm {
         m_dataHeader.descriptor.size = dataSize;
     }
 
-    void setLimits(int& x0, int& xLim, Channels channels)
+    void Wave::changeEndianness(char* bytes, size_t sampleLength, size_t bufferLength)
     {
-        if (channels == Both) {
-            x0 = 0;
-        } else if (channels == Left) {
-            x0 = 0;
-            xLim = 1;
-        } else if (channels == Right) {
-            x0 = 1;
-            xLim = 2;
+        for (size_t i = 0; i < sampleLength; i += bufferLength) {
+            size_t j = i + sampleLength - 1;
+            size_t k = i;
+            while (j > k) {
+                char temp = bytes[j];
+                bytes[j] = bytes[k];
+                bytes[k] = temp;
+                --j;
+                ++k;
+            }
         }
     }
 
-    bool peekForId(const std::string &id, std::FILE *pFile)
+    bool Wave::peekForId(const std::string &id, std::FILE *pFile)
     {
         bool res = true;
         int pos = std::ftell(pFile);
-        for (unsigned i = 0; i < id.size(); ++i) {
+        for (size_t i = 0; i < id.size(); ++i) {
             int c = std::fgetc(pFile);
             if (id[i] != (char)c) {
                 res = false;
@@ -88,7 +90,7 @@ namespace wm {
         return res;
     }
 
-    void findDataChunk(std::FILE *pFile)
+    void Wave::findDataChunk(std::FILE *pFile)
     {
         int pos = std::ftell(pFile) + 2;
         std::fseek(pFile, pos, 0);
@@ -104,12 +106,12 @@ namespace wm {
      * \param c_pFilename &mdash; the name of the file
      * \param bufferSize &mdash; the size of the intermediate buffer (default 24576)
      */
-    void Wave::open(const char *c_pFilename, size_t bufferSize)
+    void Wave::open(const char* c_pFilename, size_t bufferSize)
     {
-        std::FILE *pFile = std::fopen(c_pFilename, "rb");
+        std::FILE* pFile = std::fopen(c_pFilename, "rb");
         if (!pFile) {
             throwError("Failed to open the file.",
-                "Wave::open(const std::string &, size_t)");
+                "Wave::open(const std::string&, size_t)");
         }
         std::fread(&m_combinedHeader, 1, sizeof(CombinedHeader), pFile);
 
@@ -140,12 +142,12 @@ namespace wm {
         open(filename.c_str(), bufferSize);
     }
 
-    void Wave::readData(std::FILE *pFile, size_t bufferSize)
+    void Wave::readData(std::FILE* pFile, size_t bufferSize)
     {
-        uint8_t *pBuffer = reinterpret_cast<uint8_t *>(std::malloc(bufferSize));
+        uint8_t* pBuffer = reinterpret_cast<uint8_t*>(std::malloc(bufferSize));
         if (pBuffer == nullptr) {
             throwError("Failed to create a buffer.",
-                       "Wave::readData(std::FILE *, size_t)");
+                "Wave::readData(std::FILE*, size_t)");
         }
 
         uint16_t sampleBitDepth = getSampleBitDepth();
@@ -155,7 +157,7 @@ namespace wm {
         int frameSize = numChannels * sampleBitDepth / 8;
         if (bufferSize % frameSize != 0) {
             throwError("The buffer size must be a multiple of the frame size.",
-                       "Wave::readData(std::FILE *, size_t)");
+                "Wave::readData(std::FILE*, size_t)");
         }
 
         int numFrames = numSamples / numChannels;
@@ -176,8 +178,9 @@ namespace wm {
         } else if (sampleBitDepth == 16) {
             while (offset < numSamples) {
                 size_t numBytesToRead = std::min(bufferSize, dataSize - offset * 2);
+                std::fread(pBuffer, 1, numBytesToRead, pFile);
                 int numBufferFrames = numBytesToRead / frameSize;
-                int16_t *pI16Buffer = reinterpret_cast<int16_t *>(pBuffer);
+                int16_t* pI16Buffer = reinterpret_cast<int16_t*>(pBuffer);
                 for (int y = 0; y < numBufferFrames; ++y) {
                     for (int x = 0; x < numChannels; ++x) {
                         int i = y * numChannels + x;
@@ -199,13 +202,13 @@ namespace wm {
                     }
                 }
                 offset += bufferSize / 3;
-            }     
+            }
         } else if (sampleBitDepth == 32) {
             while (offset < numSamples) {
                 size_t numBytesToRead = std::min(bufferSize, dataSize - offset * 4);
                 std::fread(pBuffer, 1, numBytesToRead, pFile);
                 int numBufferFrames = numBytesToRead / frameSize;
-                float *pF32Buffer = reinterpret_cast<float *>(pBuffer);
+                float* pF32Buffer = reinterpret_cast<float*>(pBuffer);
                 for (int y = 0; y < numBufferFrames; ++y) {
                     for (int x = 0; x < numChannels; ++x) {
                         int i = y * numChannels + x;
@@ -217,12 +220,12 @@ namespace wm {
         } else {
             std::free(pBuffer);
             throwError("Bit depth not supported.",
-                       "Wave::readData(std::FILE *, size_t)");
+                "Wave::readData(std::FILE *, size_t)");
         }
         std::free(pBuffer);
     }
 
-    std::vector<float> Wave::getBuffer(size_t offset, size_t sampleCount, Channels channels) const
+    std::vector<float> Wave::getBuffer(size_t offset, size_t sampleCount, int channel) const
     {
         std::vector<float> buffer(sampleCount);
         for (int i = 0; i < sampleCount; ++i) {
@@ -231,27 +234,21 @@ namespace wm {
         return buffer;
     }
 
-    void Wave::changeVolume(float volume, Channels channels)
+    void Wave::changeVolume(float volume, int channel)
     { 
         int numSamples = getNumSamples();
         int numChannels = getNumChannels();
         int numFrames = numSamples / numChannels;
-        int x0 = 0;
-        int xLim = numChannels;
-        setLimits(x0, xLim, channels);
-        float max[2] = { std::numeric_limits<float>::min(), std::numeric_limits<float>::min() };
-        for (int y = 0; y < numFrames; ++y) {
-            for (int x = x0; x < xLim; ++x) {
-                if (fabs(m_pData[y * numChannels + x]) > max[x]) {
-                    max[x] = fabs(m_pData[y * numChannels + x]);
-                }
+        int offset = numChannels;
+        float max = std::numeric_limits<float>::min();
+        for (int i = offset; i < numSamples; i += numChannels) {
+            if (fabs(m_pData[i]) > max) {
+                max = fabs(m_pData[i]);
             }
         }
-        float factors[2] = { volume / max[0], volume / max[1] };
-        for (int y = 0; y < numFrames; ++y) {
-            for (int x = x0; x < xLim; ++x) {
-                m_pData[y * numChannels + x] *= factors[x];
-            }
+        float factor = volume / max;
+        for (int i = offset; i < numSamples; i += numChannels) {
+            m_pData[i] *= factor;
         }
     }
 
@@ -261,10 +258,14 @@ namespace wm {
         uint16_t numChannels = getNumChannels();
         uint32_t newDataSize = m_dataSize / numChannels;
         uint32_t newNumSamples = m_numSamples / numChannels;
-        float *pNewData = reinterpret_cast<float *>(std::malloc(newNumSamples * sizeof(pNewData)));
+        float* pNewData = reinterpret_cast<float*>(std::malloc(newNumSamples * sizeof(pNewData)));
         if (pNewData != nullptr) {
-            for (int i = 0; i < numSamples; i += numChannels) {
-                pNewData[i >> 1] = (m_pData[i] + m_pData[i + 1]) / 2.f;
+            for (int y = 0; y < numSamples; y += numChannels) {
+                float sum = 0.f;
+                for (int x = 0; x < numChannels; ++x) {
+                    sum += m_pData[y + x];
+                }
+                pNewData[y / numChannels] = sum / float(numChannels);
             }
             std::free(m_pData);
             m_pData = pNewData;
@@ -336,7 +337,7 @@ namespace wm {
         FILE *pFile = std::fopen(c_pFilename, "wb");
         if (!pFile) {
             throwError("Failed to create the file.",
-                "Wave::saveAs(const char *, uint32_t, uint16_t, size_t)");
+                "Wave::saveAs(const char*, uint32_t, uint16_t, size_t)");
         }
         generateHeader(m_numSamples * sampleBitDepth / 8, getNumChannels(), sampleRate, sampleBitDepth);
         std::fwrite(&m_combinedHeader, 1, sizeof(CombinedHeader), pFile);
@@ -350,12 +351,12 @@ namespace wm {
         saveAs(filename.c_str(), sampleRate, sampleBitDepth, bufferSize);
     }
 
-    void Wave::writeData(std::FILE *pFile, size_t bufferSize)
+    void Wave::writeData(std::FILE* pFile, size_t bufferSize)
     {
-        uint8_t *pBuffer = reinterpret_cast<uint8_t *>(std::malloc(bufferSize));
+        uint8_t* pBuffer = reinterpret_cast<uint8_t*>(std::malloc(bufferSize));
         if (pBuffer == nullptr) {
             throwError("Failed to create a buffer.",
-                       "Wave::writeData(std::FILE *, size_t)");
+                "Wave::writeData(std::FILE *, size_t)");
         }
 
         uint16_t sampleBitDepth = this->getSampleBitDepth();
@@ -365,7 +366,7 @@ namespace wm {
         int frameSize = numChannels * sampleBitDepth / 8;
         if (bufferSize % frameSize != 0) {
             throwError("The buffer size must be a multiple of the frame size.",
-                "Wave::readData(std::FILE *, size_t)");
+                "Wave::readData(std::FILE*, size_t)");
         }
 
         int numFrames = numSamples / numChannels;
@@ -387,7 +388,7 @@ namespace wm {
             while (offset < numSamples) {
                 size_t numBytesToWrite = std::min(bufferSize, dataSize - offset * 2);
                 int numBufferFrames = numBytesToWrite / frameSize;
-                int16_t *pI16Buffer = reinterpret_cast<int16_t *>(pBuffer);
+                int16_t* pI16Buffer = reinterpret_cast<int16_t*>(pBuffer);
                 for (int y = 0; y < numBufferFrames; ++y) {
                     for (int x = 0; x < numChannels; ++x) {
                         int i = y * numChannels + x;
@@ -417,7 +418,7 @@ namespace wm {
             while (offset < numSamples) {
                 size_t numBytesToWrite = std::min(bufferSize, dataSize - offset * 4);
                 int numBufferFrames = numBytesToWrite / frameSize;
-                float *pF32Buffer = reinterpret_cast<float *>(pBuffer);
+                float* pF32Buffer = reinterpret_cast<float*>(pBuffer);
                 for (int y = 0; y < numBufferFrames; ++y) {
                     for (int x = 0; x < numChannels; ++x) {
                         int i = y * numChannels + x;
@@ -430,7 +431,7 @@ namespace wm {
         } else {
             std::free(pBuffer);
             throwError("Bit depth not supported.",
-                       "Wave::writeData(std::FILE *, size_t)");
+                "Wave::writeData(std::FILE *, size_t)");
         }
         std::free(pBuffer);
     }
@@ -457,6 +458,13 @@ namespace wm {
             .substr(0, sizeof(wav.m_dataHeader.descriptor.id)) << std::endl;
         os << "Subchunk2Size: " << wav.m_dataHeader.descriptor.size << std::endl << std::endl;
         return os;
+    }
+
+    template<typename T>
+    inline void Wave::changeEndianness(T& val)
+    {
+        char* pVal = reinterpret_cast<char*>(&val);
+        std::reverse(pVal, pVal + count);
     }
 
 }
