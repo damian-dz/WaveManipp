@@ -45,18 +45,15 @@ namespace wm {
 
         CombinedHeader m_combinedHeader;
         DATAHeader m_dataHeader;
-      //  uint32_t m_dataSize;
         uint32_t m_numSamples;
-        float *m_pData;
-        bool m_isWaveLittleEndian;
+        float* m_pData;
+        bool m_isLittleEndian;
 
         WaveProperties m_waveProperties;
 
-        void generateHeader(uint32_t dataLength, uint16_t numChannels, uint32_t sampleRate, uint16_t bitsPerSample);
-        template <typename T> void changeEndianness(T& val);
+        void generateHeader();
         template <typename T> T reverseBytes(T val);
-        void changeBufferEndianness(uint8_t*bytes, size_t sampleLength, size_t bufferLength);
-        void changeHeaderEndianness();
+        void changeBufferEndianness(uint8_t* bytes, size_t sampleLength, size_t bufferLength);
         bool isCpuBigEndian() const;
         void setWaveProperties(bool onlyDataChunk = false);
 
@@ -67,28 +64,32 @@ namespace wm {
     public:
         Wave();
 
-        Wave(const char* c_pFilename);
+        Wave(const char* filename);
         Wave(const std::string& filename);
 
         ~Wave();
 
-        void open(const char* c_pFilename, size_t bufferSize = 24576);
-        void open(const std::string& filename, size_t bufferSize = 24576);
-        void readData(std::FILE* pFile, size_t bufferSize = 24576);
+        void open(const char* filename, uint32_t bufferSize = 24576);
+        void open(const std::string& filename, uint32_t bufferSize = 24576);
+        void readData(std::FILE* file, uint32_t bufferSize = 24576);
 
-        std::vector<float> getBuffer(size_t offset, size_t sampleCount, int channel = 0) const;
+        std::vector<float> getBuffer(uint32_t offset, uint32_t sampleCount, int channel = 0) const;
         void changeVolume(float volume, int channel = 0);
         void downmixToMono();
+        bool isLittleEndian() const;
         void reverse(int channel = 0);
-        void setWaveLittleEndian(bool val);
+        void setLittleEndian(bool val);
         void swapChannels();
         void zeroInitHeader();
 
-        void saveAs(const char* c_pFilename, uint32_t sampleRate = 44100, uint16_t sampleBitDepth = 16, size_t bufferSize = 24576);
-        void saveAs(const std::string& filename, uint32_t sampleRate = 44100, uint16_t sampleBitDepth = 16, size_t bufferSize = 24576);
-        void writeData(std::FILE* pFile, size_t bufferSize = 24576);
+        void saveAs(const char* filename, uint32_t bufferSize = 24576);
+        void saveAs(const std::string& filename, uint32_t bufferSize = 24576);
+        void writeData(std::FILE* file, uint32_t bufferSize = 24576);
 
-        uint32_t getDataSize() const;
+        void setSampleBitDepth(uint16_t sampleBitDepth);
+        void setSampleRate(uint32_t sampleRate);
+
+        uint32_t getDataChunkSize() const;
         uint16_t getNumChannels() const;
         uint32_t getNumSamples() const;
         uint16_t getSampleBitDepth() const;

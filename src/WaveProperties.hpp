@@ -5,6 +5,11 @@
 
 namespace wm {
 
+    /*!
+     * \brief A class that encapsulates the typical properties of a RIFF/RIFX WAVE file.
+     * \details None of the setter methods in this class performs any sort of arithmetic,
+                so setting one of the parameters will not affect any other.
+     */
     class WaveProperties
     {
         uint32_t m_riffChunkSize;
@@ -30,15 +35,16 @@ namespace wm {
         void setNumBitsPerSample(uint16_t numBitsPerSample);
         void setDataChunkSize(uint32_t dataChunkSize);
 
-        uint32_t getRiffChunkSize();
-        uint32_t getFmtChunkSize();
-        uint16_t getAudioFormat();
-        uint16_t getNumChannels();
-        uint32_t getSamplingFrequency();
-        uint32_t getNumBytesPerSecond();
-        uint16_t getBlockAlign();
-        uint16_t getNumBitsPerSample();
-        uint32_t getDataChunkSize();
+        uint32_t getRiffChunkSize() const;
+        uint32_t getFmtChunkSize() const;
+        uint16_t getAudioFormat() const;
+        uint16_t getNumChannels() const;
+        uint32_t getSamplingFrequency() const;
+        uint32_t getNumBytesPerSecond() const;
+        uint16_t getBlockAlign() const;
+        uint16_t getNumBitsPerSample() const;
+        uint32_t getDataChunkSize() const;
+
     };
 
 }

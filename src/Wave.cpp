@@ -12,13 +12,13 @@ namespace wm {
         zeroInitHeader();
     }
 
-    Wave::Wave(const char *c_pFilename)
+    Wave::Wave(const char* filename)
     {
         zeroInitHeader();
-        open(c_pFilename);
+        open(filename);
     }
 
-    Wave::Wave(const std::string &filename)
+    Wave::Wave(const std::string& filename)
     {
         zeroInitHeader();
         open(filename);
@@ -35,21 +35,16 @@ namespace wm {
         }
     }
 
-    void Wave::generateHeader(uint32_t dataSize, uint16_t numChannels, uint32_t sampleRate, uint16_t bitsPerSample)
+    void Wave::generateHeader()
     {
-        if (bitsPerSample != 8 && bitsPerSample != 16 && bitsPerSample != 24 && bitsPerSample != 32) {
-            throwError("Bit depth not supported.",
-                "Wave::generateHeader(uint32_t, uint16_t, uint32_t, uint16_t)");
-        }
-
-        if (m_isWaveLittleEndian) {
+        if (m_isLittleEndian) {
             std::memcpy(m_combinedHeader.riff.descriptor.id, "RIFF", 4);
         } else {
             std::memcpy(m_combinedHeader.riff.descriptor.id, "RIFX", 4);
         }
 
         bool isCpuLittleEndian = !isCpuBigEndian();
-        bool isEndiannessMismatched = isCpuLittleEndian != m_isWaveLittleEndian;
+        bool isEndiannessMismatched = isCpuLittleEndian != m_isLittleEndian;
 
         m_combinedHeader.riff.descriptor.size = isEndiannessMismatched ?
             reverseBytes<uint32_t>(m_waveProperties.getRiffChunkSize()) : m_waveProperties.getRiffChunkSize();
@@ -58,34 +53,20 @@ namespace wm {
         std::memcpy(m_combinedHeader.wave.descriptor.id, "fmt ", 4);
         m_combinedHeader.wave.descriptor.size = isEndiannessMismatched ?
             reverseBytes<uint32_t>(m_waveProperties.getFmtChunkSize()) : m_waveProperties.getFmtChunkSize();
-
-        m_waveProperties.setAudioFormat(bitsPerSample != 32 ? 1 : 3);
         m_combinedHeader.wave.audioFormat = isEndiannessMismatched ?
             reverseBytes<uint16_t>(m_waveProperties.getAudioFormat()) : m_waveProperties.getAudioFormat();
-
-        m_waveProperties.setNumChannels(numChannels);
         m_combinedHeader.wave.numChannels = isEndiannessMismatched ?
             reverseBytes<uint16_t>(m_waveProperties.getNumChannels()) : m_waveProperties.getNumChannels();
-
-        m_waveProperties.setSamplingFrequency(sampleRate);
         m_combinedHeader.wave.sampleRate = isEndiannessMismatched ?
             reverseBytes<uint32_t>(m_waveProperties.getSamplingFrequency()) : m_waveProperties.getSamplingFrequency();
-
-        m_waveProperties.setNumBytesPerSecond(sampleRate * numChannels * bitsPerSample / 8);
         m_combinedHeader.wave.byteRate = isEndiannessMismatched ?
             reverseBytes<uint32_t>(m_waveProperties.getNumBytesPerSecond()) : m_waveProperties.getNumBytesPerSecond();
-
-        m_waveProperties.setBlockAlign(numChannels * bitsPerSample / 8);
         m_combinedHeader.wave.blockAlign = isEndiannessMismatched ?
             reverseBytes<uint16_t>(m_waveProperties.getBlockAlign()) : m_waveProperties.getBlockAlign();
-
-        m_waveProperties.setNumBitsPerSample(bitsPerSample);
         m_combinedHeader.wave.bitsPerSample = isEndiannessMismatched ?
             reverseBytes<uint16_t>(m_waveProperties.getNumBitsPerSample()) : m_waveProperties.getNumBitsPerSample();
 
         std::memcpy(m_dataHeader.descriptor.id, "data", 4);
-
-        m_waveProperties.setDataChunkSize(dataSize);
         m_dataHeader.descriptor.size = isEndiannessMismatched ?
             reverseBytes<uint32_t>(m_waveProperties.getDataChunkSize()) : m_waveProperties.getDataChunkSize();
     }
@@ -105,18 +86,6 @@ namespace wm {
         }
     }
 
-    void Wave::changeHeaderEndianness()
-    {
-        changeEndianness<uint32_t>(m_combinedHeader.riff.descriptor.size);
-        changeEndianness<uint32_t>(m_combinedHeader.wave.descriptor.size);
-        changeEndianness<uint16_t>(m_combinedHeader.wave.audioFormat);
-        changeEndianness<uint16_t>(m_combinedHeader.wave.numChannels);
-        changeEndianness<uint32_t>(m_combinedHeader.wave.sampleRate);
-        changeEndianness<uint32_t>(m_combinedHeader.wave.byteRate);
-        changeEndianness<uint16_t>(m_combinedHeader.wave.blockAlign);
-        changeEndianness<uint16_t>(m_combinedHeader.wave.bitsPerSample);
-    }
-
     bool Wave::isCpuBigEndian() const
     {
         union {
@@ -129,7 +98,7 @@ namespace wm {
     void Wave::setWaveProperties(bool onlyDataChunk)
     {
         bool isCpuLittleEndian = !isCpuBigEndian();
-        bool isEndiannessMismatched = isCpuLittleEndian != m_isWaveLittleEndian;
+        bool isEndiannessMismatched = isCpuLittleEndian != m_isLittleEndian;
         if (!onlyDataChunk) {
             m_waveProperties.setRiffChunkSize(isEndiannessMismatched ?
                 reverseBytes<uint32_t>(m_combinedHeader.riff.descriptor.size) : m_combinedHeader.riff.descriptor.size);
@@ -184,9 +153,9 @@ namespace wm {
      * \param c_pFilename &mdash; the name of the file
      * \param bufferSize &mdash; the size of the intermediate buffer (default 24576)
      */
-    void Wave::open(const char* c_pFilename, size_t bufferSize)
+    void Wave::open(const char* filename, uint32_t bufferSize)
     {
-        std::FILE* pFile = std::fopen(c_pFilename, "rb");
+        std::FILE* pFile = std::fopen(filename, "rb");
         if (!pFile) {
             throwError("Failed to open the file.",
                 "Wave::open(const std::string&, size_t)");
@@ -194,9 +163,9 @@ namespace wm {
         std::fread(&m_combinedHeader, 1, sizeof(CombinedHeader), pFile);
 
         if (std::memcmp(m_combinedHeader.riff.descriptor.id, "RIFF", 4) == 0) {
-            m_isWaveLittleEndian = true;
+            m_isLittleEndian = true;
         } else if (std::memcmp(m_combinedHeader.riff.descriptor.id, "RIFX", 4) == 0) {
-            m_isWaveLittleEndian = false;
+            m_isLittleEndian = false;
         } else {
             throwError("Wrong format or file corrupt.",
                 "Wave::open(const std::string&, size_t)");
@@ -229,12 +198,12 @@ namespace wm {
      * \param filename &mdash; the name of the file
      * \param bufferSize &mdash; the size of the intermediate buffer (default 24576)
      */
-    void Wave::open(const std::string &filename, size_t bufferSize)
+    void Wave::open(const std::string &filename, uint32_t bufferSize)
     {
         open(filename.c_str(), bufferSize);
     }
 
-    void Wave::readData(std::FILE* pFile, size_t bufferSize)
+    void Wave::readData(std::FILE* file, uint32_t bufferSize)
     {
         uint8_t* pBuffer = reinterpret_cast<uint8_t*>(std::malloc(bufferSize));
         if (pBuffer == nullptr) {
@@ -242,28 +211,28 @@ namespace wm {
                 "Wave::readData(std::FILE*, size_t)");
         }
 
-        bool isEndiannessMismatched = isCpuBigEndian() == m_isWaveLittleEndian;
+        bool isEndiannessMismatched = isCpuBigEndian() == m_isLittleEndian;
 
-        uint16_t sampleBitDepth = getSampleBitDepth();
-        uint32_t dataSize = getDataSize();
-        int numSamples = dataSize / (int(sampleBitDepth) / 8);
-        int numChannels = getNumChannels();
-        int frameSize = numChannels * sampleBitDepth / 8;
+        uint16_t sampleBitDepth = m_waveProperties.getNumBitsPerSample();
+        uint32_t dataChunkSize = m_waveProperties.getDataChunkSize();
+        uint32_t numSamples = dataChunkSize / (uint32_t(sampleBitDepth) / 8);
+        uint16_t numChannels = m_waveProperties.getNumChannels();
+        uint16_t frameSize = numChannels * sampleBitDepth / 8;
         if (bufferSize % frameSize != 0) {
             throwError("The buffer size must be a multiple of the frame size.",
                 "Wave::readData(std::FILE*, size_t)");
         }
 
         int numFrames = numSamples / numChannels;
-        size_t offset = 0;
+        uint32_t offset = 0;
         if (sampleBitDepth == 8) {
             while (offset < numSamples) {
-                size_t numBytesToRead = std::min(bufferSize, dataSize - offset);
-                std::fread(pBuffer, 1, numBytesToRead, pFile);
-                int numBufferFrames = numBytesToRead / frameSize;
-                for (int y = 0; y < numBufferFrames; ++y) {
-                    for (int x = 0; x < numChannels; ++x) {
-                        int i = y * numChannels + x;
+                uint32_t numBytesToRead = std::min(bufferSize, dataChunkSize - offset);
+                std::fread(pBuffer, 1, numBytesToRead, file);
+                uint32_t numBufferFrames = numBytesToRead / frameSize;
+                for (uint32_t y = 0; y < numBufferFrames; ++y) {
+                    for (uint16_t x = 0; x < numChannels; ++x) {
+                        uint32_t i = y * numChannels + x;
                         m_pData[offset + i] = static_cast<float>(pBuffer[i] / 127.5f - 1.f);
                     }
                 }
@@ -271,16 +240,16 @@ namespace wm {
             }
         } else if (sampleBitDepth == 16) {
             while (offset < numSamples) {
-                size_t numBytesToRead = std::min(bufferSize, dataSize - offset * 2);
-                std::fread(pBuffer, 1, numBytesToRead, pFile);
+                uint32_t numBytesToRead = std::min(bufferSize, dataChunkSize - 2 * offset);
+                std::fread(pBuffer, 1, numBytesToRead, file);
                 if (isEndiannessMismatched) {
                     changeBufferEndianness(pBuffer, 2, numBytesToRead);
                 }
-                int numBufferFrames = numBytesToRead / frameSize;
+                uint32_t numBufferFrames = numBytesToRead / frameSize;
                 int16_t* pI16Buffer = reinterpret_cast<int16_t*>(pBuffer);
-                for (int y = 0; y < numBufferFrames; ++y) {
-                    for (int x = 0; x < numChannels; ++x) {
-                        int i = y * numChannels + x;
+                for (uint32_t y = 0; y < numBufferFrames; ++y) {
+                    for (uint16_t x = 0; x < numChannels; ++x) {
+                        uint32_t i = y * numChannels + x;
                         m_pData[offset + i] = static_cast<float>(pI16Buffer[i] / 32768.f);
                     }
                 }
@@ -288,15 +257,15 @@ namespace wm {
             }
         } else if (sampleBitDepth == 24) {
             while (offset < numSamples) {
-                size_t numBytesToRead = std::min(bufferSize, dataSize - offset * 3);
-                std::fread(pBuffer, 1, numBytesToRead, pFile);
+                uint32_t numBytesToRead = std::min(bufferSize, dataChunkSize - 3 * offset);
+                std::fread(pBuffer, 1, numBytesToRead, file);
                 if (isEndiannessMismatched) {
                     changeBufferEndianness(pBuffer, 3, numBytesToRead);
                 }
-                int numBufferFrames = numBytesToRead / frameSize;
-                for (int y = 0; y < numBufferFrames; ++y) {
-                    for (int x = 0; x < numChannels; ++x) {
-                        int i = (y * numChannels + x) * 3;
+                uint32_t numBufferFrames = numBytesToRead / frameSize;
+                for (uint32_t y = 0; y < numBufferFrames; ++y) {
+                    for (uint16_t x = 0; x < numChannels; ++x) {
+                        uint32_t i = 3 * (y * numChannels + x);
                         m_pData[offset + i / 3] = static_cast<float>(
                             (pBuffer[i] << 8 | pBuffer[i + 1] << 16 | pBuffer[i + 2] << 24) / 2147483648.f);
                     }
@@ -305,16 +274,16 @@ namespace wm {
             }
         } else if (sampleBitDepth == 32) {
             while (offset < numSamples) {
-                size_t numBytesToRead = std::min(bufferSize, dataSize - offset * 4);
-                std::fread(pBuffer, 1, numBytesToRead, pFile);
+                uint32_t numBytesToRead = std::min(bufferSize, dataChunkSize - 4 * offset);
+                std::fread(pBuffer, 1, numBytesToRead, file);
                 if (isEndiannessMismatched) {
                     changeBufferEndianness(pBuffer, 4, numBytesToRead);
                 }
-                int numBufferFrames = numBytesToRead / frameSize;
+                uint32_t numBufferFrames = numBytesToRead / frameSize;
                 float* pF32Buffer = reinterpret_cast<float*>(pBuffer);
-                for (int y = 0; y < numBufferFrames; ++y) {
-                    for (int x = 0; x < numChannels; ++x) {
-                        int i = y * numChannels + x;
+                for (uint32_t y = 0; y < numBufferFrames; ++y) {
+                    for (uint16_t x = 0; x < numChannels; ++x) {
+                        uint32_t i = y * numChannels + x;
                         m_pData[offset + i] = static_cast<float>(pF32Buffer[i]);
                     }
                 }
@@ -328,11 +297,18 @@ namespace wm {
         std::free(pBuffer);
     }
 
-    std::vector<float> Wave::getBuffer(size_t offset, size_t sampleCount, int channel) const
+    /*!
+     * \brief Fetches a buffer that starts at o.
+     * \param filename &mdash; the name of the file
+     * \param bufferSize &mdash; the size of the intermediate buffer (default 24576)
+     */
+    std::vector<float> Wave::getBuffer(uint32_t offset, uint32_t sampleCount, int channel) const
     {
         std::vector<float> buffer(sampleCount);
-        for (int i = 0; i < sampleCount; ++i) {
-            buffer[i] = m_pData[offset + i];
+        uint16_t numChannels = int(m_waveProperties.getNumChannels());
+        uint32_t absoluteOffset = numChannels * offset;
+        for (uint32_t i = channel; i < sampleCount; i += numChannels) {
+            buffer[i] = m_pData[absoluteOffset + i];
         }
         return buffer;
     }
@@ -358,52 +334,51 @@ namespace wm {
     void Wave::downmixToMono()
     {
         uint32_t numSamples = getNumSamples();
-        uint16_t numChannels = getNumChannels();
+        uint16_t numChannels = m_waveProperties.getNumChannels();
         uint32_t newDataChunkSize = m_waveProperties.getDataChunkSize() / numChannels;
         uint32_t newNumSamples = m_numSamples / numChannels;
         float* pNewData = reinterpret_cast<float*>(std::malloc(newNumSamples * sizeof(pNewData)));
         if (pNewData != nullptr) {
-            for (int y = 0; y < numSamples; y += numChannels) {
+            for (uint32_t y = 0; y < numSamples; y += numChannels) {
                 float sum = 0.f;
-                for (int x = 0; x < numChannels; ++x) {
+                for (uint16_t x = 0; x < numChannels; ++x) {
                     sum += m_pData[y + x];
                 }
                 pNewData[y / numChannels] = sum / float(numChannels);
             }
             std::free(m_pData);
             m_pData = pNewData;
-            //m_combinedHeader.wave.blockAlign /= numChannels;
             m_waveProperties.setBlockAlign(m_waveProperties.getBlockAlign() / numChannels);
-            //m_combinedHeader.wave.byteRate /= numChannels;
             m_waveProperties.setNumBytesPerSecond(m_waveProperties.getNumBytesPerSecond() / numChannels);
-            //m_combinedHeader.riff.descriptor.size = newDataChunkSize + 36;
             m_waveProperties.setRiffChunkSize(newDataChunkSize + 36);
-           // m_dataSize = newDataChunkSize;
             m_waveProperties.setDataChunkSize(newDataChunkSize);
-            //m_combinedHeader.wave.numChannels = 1;
             m_waveProperties.setNumChannels(1);
             m_numSamples = newNumSamples;
-
         }
+    }
+
+    bool Wave::isLittleEndian() const
+    {
+        return m_isLittleEndian;
     }
 
     void Wave::reverse(int channel)
     {
         int numChannels = getNumChannels();
-        int j = getNumSamples() - numChannels + channel;
-        int k = channel;
-        while (j > k) {
-            float val = m_pData[j];
-            m_pData[j] = m_pData[k];
-            m_pData[k] = val;
-            j -= numChannels;
-            k += numChannels;
+        int i = getNumSamples() - numChannels + channel;
+        int j = channel;
+        while (i > j) {
+            float sample = m_pData[i];
+            m_pData[i] = m_pData[j];
+            m_pData[j] = sample;
+            i -= numChannels;
+            j += numChannels;
         }
     }
 
-    void Wave::setWaveLittleEndian(bool val)
+    void Wave::setLittleEndian(bool isLittleEndian)
     {
-        m_isWaveLittleEndian = val;
+        m_isLittleEndian = isLittleEndian;
     }
 
     void Wave::swapChannels()
@@ -431,9 +406,9 @@ namespace wm {
      * \brief Gets the number of bytes necessary to store the audio data with the current settings.
      * \result The data size.
      */
-    uint32_t Wave::getDataSize() const
+    uint32_t Wave::getDataChunkSize() const
     {
-        return m_dataHeader.descriptor.size;
+        return m_waveProperties.getDataChunkSize();
     }
 
     /*!
@@ -442,7 +417,7 @@ namespace wm {
      */
     uint16_t Wave::getNumChannels() const
     {
-        return m_combinedHeader.wave.numChannels;
+        return m_waveProperties.getNumChannels();
     }
 
     uint32_t Wave::getNumSamples() const
@@ -456,29 +431,29 @@ namespace wm {
      */
     uint16_t Wave::getSampleBitDepth() const
     {
-        return m_combinedHeader.wave.bitsPerSample;
+        return m_waveProperties.getNumBitsPerSample();
     }
 
-    void Wave::saveAs(const char *c_pFilename, uint32_t sampleRate, uint16_t sampleBitDepth, size_t bufferSize)
+    void Wave::saveAs(const char* filename, uint32_t bufferSize)
     {
-        FILE *pFile = std::fopen(c_pFilename, "wb");
+        FILE* pFile = std::fopen(filename, "wb");
         if (!pFile) {
             throwError("Failed to create the file.",
                 "Wave::saveAs(const char*, uint32_t, uint16_t, size_t)");
         }
-        generateHeader(m_numSamples * sampleBitDepth / 8, m_waveProperties.getNumChannels(), sampleRate, sampleBitDepth);
+        generateHeader();
         std::fwrite(&m_combinedHeader, 1, sizeof(CombinedHeader), pFile);
         std::fwrite(&m_dataHeader, 1, sizeof(DATAHeader), pFile);
         writeData(pFile, bufferSize);
         std::fclose(pFile);
     }
 
-    void Wave::saveAs(const std::string &filename, uint32_t sampleRate, uint16_t sampleBitDepth, size_t bufferSize)
+    void Wave::saveAs(const std::string& filename, uint32_t bufferSize)
     {
-        saveAs(filename.c_str(), sampleRate, sampleBitDepth, bufferSize);
+        saveAs(filename.c_str(), bufferSize);
     }
 
-    void Wave::writeData(std::FILE* pFile, size_t bufferSize)
+    void Wave::writeData(std::FILE* file, uint32_t bufferSize)
     {
         uint8_t* pBuffer = reinterpret_cast<uint8_t*>(std::malloc(bufferSize));
         if (pBuffer == nullptr) {
@@ -486,59 +461,55 @@ namespace wm {
                 "Wave::writeData(std::FILE *, size_t)");
         }
 
-        bool isEndiannessMismatched = isCpuBigEndian() == m_isWaveLittleEndian;
-
         uint16_t sampleBitDepth = m_waveProperties.getNumBitsPerSample();
-        std::cout << sampleBitDepth << std::endl;
-
         uint32_t dataChunkSize = m_waveProperties.getDataChunkSize();
-        int numSamples = dataChunkSize / (int(sampleBitDepth) / 8);
-        int numChannels = m_waveProperties.getNumChannels();
-        int frameSize = numChannels * sampleBitDepth / 8;
+        uint32_t numSamples = dataChunkSize / (uint32_t(sampleBitDepth) / 8);
+        uint16_t numChannels = m_waveProperties.getNumChannels();
+        uint16_t frameSize = numChannels * sampleBitDepth / 8;
         if (bufferSize % frameSize != 0) {
             throwError("The buffer size must be a multiple of the frame size.",
                 "Wave::readData(std::FILE*, size_t)");
         }
 
-        int numFrames = numSamples / numChannels;
-        size_t offset = 0;
+        bool isEndiannessMismatched = isCpuBigEndian() == m_isLittleEndian;
+        uint32_t offset = 0;
         if (sampleBitDepth == 8) {
             while (offset < numSamples) {
-                size_t numBytesToWrite = std::min(bufferSize, dataChunkSize - offset);
-                int numBufferFrames = numBytesToWrite / frameSize;
-                for (int y = 0; y < numBufferFrames; ++y) {
-                    for (int x = 0; x < numChannels; ++x) {
+                uint32_t numBytesToWrite = std::min(bufferSize, dataChunkSize - offset);
+                uint32_t numBufferFrames = numBytesToWrite / frameSize;
+                for (uint32_t y = 0; y < numBufferFrames; ++y) {
+                    for (uint16_t x = 0; x < numChannels; ++x) {
                         int i = y * numChannels + x;
                         pBuffer[i] = uint8_t(roundf((m_pData[offset + i] + 1.f) * 127.5f));
                     }
                 }
-                std::fwrite(pBuffer, 1, numBytesToWrite, pFile);
+                std::fwrite(pBuffer, 1, numBytesToWrite, file);
                 offset += bufferSize;
             }
         } else if (sampleBitDepth == 16) {
             while (offset < numSamples) {
-                size_t numBytesToWrite = std::min(bufferSize, dataChunkSize - offset * 2);
-                int numBufferFrames = numBytesToWrite / frameSize;
+                uint32_t numBytesToWrite = std::min(bufferSize, dataChunkSize - 2 * offset);
+                uint32_t numBufferFrames = numBytesToWrite / frameSize;
                 int16_t* pI16Buffer = reinterpret_cast<int16_t*>(pBuffer);
-                for (int y = 0; y < numBufferFrames; ++y) {
-                    for (int x = 0; x < numChannels; ++x) {
-                        int i = y * numChannels + x;
+                for (uint32_t y = 0; y < numBufferFrames; ++y) {
+                    for (uint16_t x = 0; x < numChannels; ++x) {
+                        uint32_t i = y * numChannels + x;
                         pI16Buffer[i] = int16_t(m_pData[offset + i] * 32768.f);
                     }
                 }
                 if (isEndiannessMismatched) {
                     changeBufferEndianness(pBuffer, 2, numBytesToWrite);
                 }
-                std::fwrite(pBuffer, 1, numBytesToWrite, pFile);
+                std::fwrite(pBuffer, 1, numBytesToWrite, file);
                 offset += bufferSize / 2;
             }
         } else if (sampleBitDepth == 24) {
             while (offset < numSamples) {
-                size_t numBytesToWrite = std::min(bufferSize, dataChunkSize - offset * 3);
-                int numBufferFrames = numBytesToWrite / frameSize;
-                for (int y = 0; y < numBufferFrames; ++y) {
-                    for (int x = 0; x < numChannels; ++x) {
-                        int i = (y * numChannels + x) * 3;
+                uint32_t numBytesToWrite = std::min(bufferSize, dataChunkSize - 3 * offset);
+                uint32_t numBufferFrames = numBytesToWrite / frameSize;
+                for (uint32_t y = 0; y < numBufferFrames; ++y) {
+                    for (uint16_t x = 0; x < numChannels; ++x) {
+                        uint32_t i = 3 * (y * numChannels + x);
                         int val = int(m_pData[offset + i / 3] * 2147483648.f);
                         pBuffer[i] = uint8_t(val >> 8);
                         pBuffer[i + 1] = uint8_t(val >> 16);
@@ -548,24 +519,24 @@ namespace wm {
                 if (isEndiannessMismatched) {
                     changeBufferEndianness(pBuffer, 3, numBytesToWrite);
                 }
-                std::fwrite(pBuffer, 1, numBytesToWrite, pFile);
+                std::fwrite(pBuffer, 1, numBytesToWrite, file);
                 offset += bufferSize / 3;
             }
         } else if (sampleBitDepth == 32) {
             while (offset < numSamples) {
-                size_t numBytesToWrite = std::min(bufferSize, dataChunkSize - offset * 4);
-                int numBufferFrames = numBytesToWrite / frameSize;
+                uint32_t numBytesToWrite = std::min(bufferSize, dataChunkSize - 4 * offset);
+                uint32_t numBufferFrames = numBytesToWrite / frameSize;
                 float* pF32Buffer = reinterpret_cast<float*>(pBuffer);
-                for (int y = 0; y < numBufferFrames; ++y) {
-                    for (int x = 0; x < numChannels; ++x) {
-                        int i = y * numChannels + x;
+                for (uint32_t y = 0; y < numBufferFrames; ++y) {
+                    for (uint16_t x = 0; x < numChannels; ++x) {
+                        uint32_t i = y * numChannels + x;
                         pF32Buffer[i] = m_pData[offset + i];
                     }
                 }
                 if (isEndiannessMismatched) {
                     changeBufferEndianness(pBuffer, 4, numBytesToWrite);
                 }
-                std::fwrite(pBuffer, 1, numBytesToWrite, pFile);
+                std::fwrite(pBuffer, 1, numBytesToWrite, file);
                 offset += bufferSize / 4;
             }
         } else {
@@ -576,36 +547,47 @@ namespace wm {
         std::free(pBuffer);
     }
 
+    void Wave::setSampleBitDepth(uint16_t sampleBitDepth)
+    {
+        if (sampleBitDepth != 8 && sampleBitDepth != 16 && sampleBitDepth != 24 && sampleBitDepth != 32) {
+            throwError("Bit depth not supported.",
+                "Wave::setSampleBitDepth(uint32_t)");
+        }
+        m_waveProperties.setNumBitsPerSample(sampleBitDepth);
+        m_waveProperties.setAudioFormat(sampleBitDepth != 32 ? 1 : 3);
+        uint16_t numChannels = m_waveProperties.getNumChannels();
+        m_waveProperties.setNumBytesPerSecond(numChannels * m_waveProperties.getSamplingFrequency() * sampleBitDepth / 8);
+        m_waveProperties.setBlockAlign(numChannels * sampleBitDepth / 8);
+        m_waveProperties.setDataChunkSize(m_numSamples * sampleBitDepth / 8);
+    }
+
+    void Wave::setSampleRate(uint32_t sampleRate)
+    {
+        m_waveProperties.setSamplingFrequency(sampleRate);
+    }
+
     std::ostream &operator<<(std::ostream &os, const Wave &wav)
     {
         os << "ChunkID: " << std::string(wav.m_combinedHeader.riff.descriptor.id)
             .substr(0, sizeof(wav.m_combinedHeader.riff.descriptor.id)) << std::endl;
-        os << "ChunkSize: " << wav.m_combinedHeader.riff.descriptor.size << std::endl;
+        os << "ChunkSize: " << wav.m_waveProperties.getRiffChunkSize() << std::endl;
         os << "Format: " << std::string(wav.m_combinedHeader.riff.type)
             .substr(0, sizeof(wav.m_combinedHeader.riff.type)) << std::endl;
         os << "----------" << std::endl;
         os << "Subchunk1ID: " << std::string(wav.m_combinedHeader.riff.descriptor.id)
             .substr(0, sizeof(wav.m_combinedHeader.wave.descriptor.id)) << std::endl;
-        os << "Subchunk1Size: " << wav.m_combinedHeader.wave.descriptor.size << std::endl;
-        os << "AudioFormat: " << wav.m_combinedHeader.wave.audioFormat << std::endl;
-        os << "NumChannels: " << wav.m_combinedHeader.wave.numChannels << std::endl;
-        os << "SampleRate: " << wav.m_combinedHeader.wave.sampleRate << std::endl;
-        os << "ByteRate: " << wav.m_combinedHeader.wave.byteRate << std::endl;
-        os << "BlockAlign: " << wav.m_combinedHeader.wave.blockAlign << std::endl;
-        os << "BitsPerSample: " << wav.m_combinedHeader.wave.bitsPerSample << std::endl;
+        os << "Subchunk1Size: " << wav.m_waveProperties.getRiffChunkSize() << std::endl;
+        os << "AudioFormat: " << wav.m_waveProperties.getAudioFormat() << std::endl;
+        os << "NumChannels: " << wav.m_waveProperties.getNumChannels() << std::endl;
+        os << "SampleRate: " << wav.m_waveProperties.getSamplingFrequency() << std::endl;
+        os << "ByteRate: " << wav.m_waveProperties.getNumBytesPerSecond() << std::endl;
+        os << "BlockAlign: " << wav.m_waveProperties.getBlockAlign() << std::endl;
+        os << "BitsPerSample: " << wav.m_waveProperties.getNumBitsPerSample() << std::endl;
         os << "----------" << std::endl;
         os << "Subchunk2ID: " << std::string(wav.m_dataHeader.descriptor.id)
             .substr(0, sizeof(wav.m_dataHeader.descriptor.id)) << std::endl;
-        os << "Subchunk2Size: " << wav.m_dataHeader.descriptor.size << std::endl << std::endl;
+        os << "Subchunk2Size: " << wav.m_waveProperties.getDataChunkSize() << std::endl << std::endl;
         return os;
-    }
-
-    template<typename T>
-    inline void Wave::changeEndianness(T& val)
-    {
-        char* pVal = reinterpret_cast<char*>(&val);
-        size_t count = sizeof(T);
-        std::reverse(pVal, pVal + count);
     }
 
     template<typename T>
