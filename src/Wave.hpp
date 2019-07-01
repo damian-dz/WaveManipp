@@ -1,7 +1,7 @@
 #ifndef WAVE_H
 #define WAVE_H
 
-#include "utils.hpp"
+#include "WaveProperties.hpp"
 
 namespace wm {
 
@@ -45,16 +45,20 @@ namespace wm {
 
         CombinedHeader m_combinedHeader;
         DATAHeader m_dataHeader;
-        uint32_t m_dataSize;
+      //  uint32_t m_dataSize;
         uint32_t m_numSamples;
         float *m_pData;
         bool m_isWaveLittleEndian;
 
+        WaveProperties m_waveProperties;
+
         void generateHeader(uint32_t dataLength, uint16_t numChannels, uint32_t sampleRate, uint16_t bitsPerSample);
         template <typename T> void changeEndianness(T& val);
+        template <typename T> T reverseBytes(T val);
         void changeBufferEndianness(uint8_t*bytes, size_t sampleLength, size_t bufferLength);
         void changeHeaderEndianness();
         bool isCpuBigEndian() const;
+        void setWaveProperties(bool onlyDataChunk = false);
 
         void findDataChunk(std::FILE* pFile);
         bool peekForId(const std::string& id, std::FILE* pFile);
