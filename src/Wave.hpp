@@ -48,10 +48,13 @@ namespace wm {
         uint32_t m_dataSize;
         uint32_t m_numSamples;
         float *m_pData;
+        bool m_isWaveLittleEndian;
 
         void generateHeader(uint32_t dataLength, uint16_t numChannels, uint32_t sampleRate, uint16_t bitsPerSample);
         template <typename T> void changeEndianness(T& val);
-        void changeEndianness(char *bytes, size_t sampleLength, size_t bufferLength);
+        void changeBufferEndianness(uint8_t*bytes, size_t sampleLength, size_t bufferLength);
+        void changeHeaderEndianness();
+        bool isCpuBigEndian() const;
 
         void findDataChunk(std::FILE* pFile);
         bool peekForId(const std::string& id, std::FILE* pFile);
@@ -72,6 +75,8 @@ namespace wm {
         std::vector<float> getBuffer(size_t offset, size_t sampleCount, int channel = 0) const;
         void changeVolume(float volume, int channel = 0);
         void downmixToMono();
+        void reverse(int channel = 0);
+        void setWaveLittleEndian(bool val);
         void swapChannels();
         void zeroInitHeader();
 
