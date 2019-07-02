@@ -9,6 +9,7 @@ namespace wm {
      * \brief A class that encapsulates the typical properties of a RIFF/RIFX WAVE file.
      * \details None of the setter methods in this class performs any sort of arithmetic,
                 so setting one of the parameters will not affect any other.
+                The class stores no information about endianness.
      */
     class WaveProperties
     {

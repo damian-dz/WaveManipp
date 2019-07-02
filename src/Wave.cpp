@@ -12,16 +12,53 @@ namespace wm {
         zeroInitHeader();
     }
 
+    Wave::Wave(uint32_t numFrames, uint16_t numChannels, uint16_t bitDepth, uint32_t sampleRate)
+    {
+        zeroInitHeader();
+        setFourCharacterCodes();
+        m_waveProperties.setNumChannels(numChannels);
+        m_isLittleEndian = true;
+        m_numSamples = numChannels * numFrames;
+        reserveMemory(m_numSamples);
+        setSampleRate(sampleRate);
+        setSampleBitDepth(bitDepth);
+        m_waveProperties.setRiffChunkSize(m_waveProperties.getDataChunkSize() + 36);
+        m_waveProperties.setFmtChunkSize(16);
+    }
+
+    /*!
+     * \brief Loads the specified file into a Wave object in its entirety.
+     * \param filename &mdash; the name of the file
+     */
     Wave::Wave(const char* filename)
     {
         zeroInitHeader();
         open(filename);
     }
 
+    /*!
+     * \brief Loads the specified file into a Wave object in its entirety.
+     * \param filename &mdash; the name of the file
+     */
     Wave::Wave(const std::string& filename)
     {
         zeroInitHeader();
         open(filename);
+    }
+
+    /*!
+     * \brief Creates a deep copy of the input Wave object.
+     * \param other &mdash; the object to copy
+     */
+    Wave::Wave(const Wave& other) :
+        m_combinedHeader(other.m_combinedHeader),
+        m_dataHeader(other.m_dataHeader),
+        m_waveProperties(other.m_waveProperties),
+        m_numSamples(other.m_numSamples),
+        m_isLittleEndian(other.m_isLittleEndian)
+    {
+        reserveMemory(other.m_numSamples);
+        copySamples(other.m_pData, m_pData, m_numSamples);
     }
 
     /*!
@@ -35,22 +72,27 @@ namespace wm {
         }
     }
 
-    void Wave::generateHeader()
+    void Wave::setFourCharacterCodes()
     {
         if (m_isLittleEndian) {
             std::memcpy(m_combinedHeader.riff.descriptor.id, "RIFF", 4);
         } else {
             std::memcpy(m_combinedHeader.riff.descriptor.id, "RIFX", 4);
         }
+        std::memcpy(m_combinedHeader.riff.type, "WAVE", 4);
+        std::memcpy(m_combinedHeader.wave.descriptor.id, "fmt ", 4);
+        std::memcpy(m_dataHeader.descriptor.id, "data", 4);
+    }
+
+    void Wave::generateHeader()
+    {
+        setFourCharacterCodes();
 
         bool isCpuLittleEndian = !isCpuBigEndian();
         bool isEndiannessMismatched = isCpuLittleEndian != m_isLittleEndian;
 
         m_combinedHeader.riff.descriptor.size = isEndiannessMismatched ?
             reverseBytes<uint32_t>(m_waveProperties.getRiffChunkSize()) : m_waveProperties.getRiffChunkSize();
-        std::memcpy(m_combinedHeader.riff.type, "WAVE", 4);
-
-        std::memcpy(m_combinedHeader.wave.descriptor.id, "fmt ", 4);
         m_combinedHeader.wave.descriptor.size = isEndiannessMismatched ?
             reverseBytes<uint32_t>(m_waveProperties.getFmtChunkSize()) : m_waveProperties.getFmtChunkSize();
         m_combinedHeader.wave.audioFormat = isEndiannessMismatched ?
@@ -66,20 +108,19 @@ namespace wm {
         m_combinedHeader.wave.bitsPerSample = isEndiannessMismatched ?
             reverseBytes<uint16_t>(m_waveProperties.getNumBitsPerSample()) : m_waveProperties.getNumBitsPerSample();
 
-        std::memcpy(m_dataHeader.descriptor.id, "data", 4);
         m_dataHeader.descriptor.size = isEndiannessMismatched ?
             reverseBytes<uint32_t>(m_waveProperties.getDataChunkSize()) : m_waveProperties.getDataChunkSize();
     }
 
-    void Wave::changeBufferEndianness(uint8_t* bytes, size_t sampleLength, size_t bufferLength)
+    void Wave::changeBufferEndianness(uint8_t* buffer, uint32_t sampleLength, uint32_t bufferLength)
     {
-        for (size_t i = 0; i < bufferLength; i += sampleLength) {
-            size_t j = i + sampleLength - 1;
-            size_t k = i;
+        for (uint32_t i = 0; i < bufferLength; i += sampleLength) {
+            uint32_t j = i + sampleLength - 1;
+            uint32_t k = i;
             while (j > k) {
-                uint8_t byte = bytes[j];
-                bytes[j] = bytes[k];
-                bytes[k] = byte;
+                uint8_t u8 = buffer[j];
+                buffer[j] = buffer[k];
+                buffer[k] = u8;
                 --j;
                 ++k;
             }
@@ -122,6 +163,42 @@ namespace wm {
         }
     }
 
+    /*!
+     * \brief Reserves enough memory to store the specified number of samples using floating-point format.
+     * \param numSamples &mdash; the number of samples
+     */
+    void Wave::reserveMemory(uint32_t numSamples)
+    {
+        m_pData = reinterpret_cast<float*>(std::malloc(numSamples * sizeof(m_pData)));
+    }
+
+    /*!
+     * \brief Resizes the block of memory to accomodate the specified number of samples using floating-point format.
+     * \param numSamples &mdash; the new number of samples
+     * \param zeroInit &mdash; specifies if any additional memory should be set to zero
+     */
+    void Wave::resizeMemory(uint32_t numSamples, bool zeroInit)
+    {
+        if (numSamples == m_numSamples) {
+            throwError("The number of samples remains the same. Resize unnecessary.",
+                "Wave::resizeMemory(uint32_t, bool)");
+        }
+        m_pData = reinterpret_cast<float*>(std::realloc(m_pData, numSamples * sizeof(m_pData)));
+        uint32_t count = std::min(m_numSamples, numSamples);
+        m_numSamples = numSamples;
+        m_waveProperties.setDataChunkSize(numSamples * m_waveProperties.getNumBitsPerSample() / 8);
+        if (zeroInit) {
+            for (uint32_t i = count; i < numSamples; ++i) {
+                m_pData[i] = 0.f;
+            }
+        }      
+    }
+
+    void Wave::copySamples(float* source, float* destination, uint32_t count, uint32_t srcOffset, uint32_t destOffset)
+    {
+        std::memcpy(&destination[destOffset], &source[srcOffset], count * sizeof(float));
+    }
+
     bool Wave::peekForId(const std::string &id, std::FILE *pFile)
     {
         bool res = true;
@@ -150,8 +227,8 @@ namespace wm {
 
     /*!
      * \brief Loads the file specified by its name into memory.
-     * \param c_pFilename &mdash; the name of the file
-     * \param bufferSize &mdash; the size of the intermediate buffer (default 24576)
+     * \param filename &mdash; the name of the file
+     * \param bufferSize &mdash; the size of the intermediate read buffer (default 24576)
      */
     void Wave::open(const char* filename, uint32_t bufferSize)
     {
@@ -168,7 +245,7 @@ namespace wm {
             m_isLittleEndian = false;
         } else {
             throwError("Wrong format or file corrupt.",
-                "Wave::open(const std::string&, size_t)");
+                "Wave::open(const std::string&, uint32_t)");
         }
         
         setWaveProperties();
@@ -184,9 +261,8 @@ namespace wm {
 
         setWaveProperties(true);
 
-        uint32_t dataSize = m_waveProperties.getDataChunkSize();
-        m_numSamples = dataSize / (int(m_waveProperties.getNumBitsPerSample()) / 8);
-        m_pData = reinterpret_cast<float*>(std::malloc(dataSize * sizeof(m_pData)));
+        m_numSamples = m_waveProperties.getDataChunkSize() / (m_waveProperties.getNumBitsPerSample() / 8);
+        reserveMemory(m_numSamples);
         if (m_pData != nullptr) {
             readData(pFile, bufferSize);
         }
@@ -196,7 +272,7 @@ namespace wm {
     /*!
      * \brief Loads the file specified by its name into memory.
      * \param filename &mdash; the name of the file
-     * \param bufferSize &mdash; the size of the intermediate buffer (default 24576)
+     * \param bufferSize &mdash; the size of the intermediate read buffer (default 24576)
      */
     void Wave::open(const std::string &filename, uint32_t bufferSize)
     {
@@ -208,7 +284,7 @@ namespace wm {
         uint8_t* pBuffer = reinterpret_cast<uint8_t*>(std::malloc(bufferSize));
         if (pBuffer == nullptr) {
             throwError("Failed to create a buffer.",
-                "Wave::readData(std::FILE*, size_t)");
+                "Wave::readData(std::FILE*, uint32_t)");
         }
 
         bool isEndiannessMismatched = isCpuBigEndian() == m_isLittleEndian;
@@ -220,7 +296,7 @@ namespace wm {
         uint16_t frameSize = numChannels * sampleBitDepth / 8;
         if (bufferSize % frameSize != 0) {
             throwError("The buffer size must be a multiple of the frame size.",
-                "Wave::readData(std::FILE*, size_t)");
+                "Wave::readData(std::FILE*, uint32_t)");
         }
 
         int numFrames = numSamples / numChannels;
@@ -298,9 +374,11 @@ namespace wm {
     }
 
     /*!
-     * \brief Fetches a buffer that starts at o.
-     * \param filename &mdash; the name of the file
-     * \param bufferSize &mdash; the size of the intermediate buffer (default 24576)
+     * \brief Fetches a buffer from the Wave object as a vector of floating-point values.
+     * \param offset &mdash; the sample offset for the specified channel
+     * \param sampleCount &mdash; the number of samples to fetch
+     * \param channel &mdash; the index of the channel
+     * \result An std::vector of floating-point values.
      */
     std::vector<float> Wave::getBuffer(uint32_t offset, uint32_t sampleCount, int channel) const
     {
@@ -315,18 +393,18 @@ namespace wm {
 
     void Wave::changeVolume(float volume, int channel)
     { 
-        int numSamples = getNumSamples();
-        int numChannels = getNumChannels();
-        int numFrames = numSamples / numChannels;
-        int offset = numChannels;
+        uint32_t numSamples = getNumSamples();
+        uint16_t numChannels = m_waveProperties.getNumChannels();
+        uint32_t numFrames = numSamples / numChannels;
+        uint16_t offset = numChannels;
         float max = std::numeric_limits<float>::min();
-        for (int i = offset; i < numSamples; i += numChannels) {
+        for (uint32_t i = offset; i < numSamples; i += numChannels) {
             if (fabs(m_pData[i]) > max) {
                 max = fabs(m_pData[i]);
             }
         }
         float factor = volume / max;
-        for (int i = offset; i < numSamples; i += numChannels) {
+        for (uint32_t i = offset; i < numSamples; i += numChannels) {
             m_pData[i] *= factor;
         }
     }
@@ -357,6 +435,35 @@ namespace wm {
         }
     }
 
+    Wave Wave::generateTestSineWave(float sineFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
+    {
+        Wave result(numFrames, 1);
+        constexpr float coeff = 1.f - std::numeric_limits<float>::epsilon();
+        float timeLimit = float(numFrames) / samplingFreq;
+        float timeStep = timeLimit / (numFrames - 1);
+        float omega = 2 * 3.1415927f * sineFreq;
+        for (uint32_t i = 0; i < numFrames; ++i) {
+            result.m_pData[i] = coeff * sinf(omega * (i * timeStep));
+        }
+        return result;
+    }
+
+    Wave Wave::generateTestSquareWave(float sqrFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
+    {
+        Wave result(numFrames, 1);
+        float timeLimit = float(numFrames) / samplingFreq;
+        float timeStep = timeLimit / (numFrames - 1);
+        float omega = 2 * 3.1415927f * sqrFreq;
+        for (uint32_t i = 0; i < numFrames; ++i) {
+            result.m_pData[i] = sinf(omega * (i * timeStep)) < 0 ? -1.f : 1.f;
+        }
+        return result;
+    }
+
+    /*!
+     * \brief Checks if the Wave object is set to be stored using little-endian representation.
+     * \result <b>true</b> if it is little-endian (RIFF), <b>false</b> if it is big-endian (RIFX).
+     */
     bool Wave::isLittleEndian() const
     {
         return m_isLittleEndian;
@@ -404,7 +511,7 @@ namespace wm {
 
     /*!
      * \brief Gets the number of bytes necessary to store the audio data with the current settings.
-     * \result The data size.
+     * \result The data chunk size.
      */
     uint32_t Wave::getDataChunkSize() const
     {
@@ -439,7 +546,7 @@ namespace wm {
         FILE* pFile = std::fopen(filename, "wb");
         if (!pFile) {
             throwError("Failed to create the file.",
-                "Wave::saveAs(const char*, uint32_t, uint16_t, size_t)");
+                "Wave::saveAs(const char*, uint32_t)");
         }
         generateHeader();
         std::fwrite(&m_combinedHeader, 1, sizeof(CombinedHeader), pFile);
@@ -458,7 +565,7 @@ namespace wm {
         uint8_t* pBuffer = reinterpret_cast<uint8_t*>(std::malloc(bufferSize));
         if (pBuffer == nullptr) {
             throwError("Failed to create a buffer.",
-                "Wave::writeData(std::FILE *, size_t)");
+                "Wave::writeData(std::FILE*, uint32_t)");
         }
 
         uint16_t sampleBitDepth = m_waveProperties.getNumBitsPerSample();
@@ -468,7 +575,7 @@ namespace wm {
         uint16_t frameSize = numChannels * sampleBitDepth / 8;
         if (bufferSize % frameSize != 0) {
             throwError("The buffer size must be a multiple of the frame size.",
-                "Wave::readData(std::FILE*, size_t)");
+                "Wave::readData(std::FILE*, uint32_t)");
         }
 
         bool isEndiannessMismatched = isCpuBigEndian() == m_isLittleEndian;
@@ -542,7 +649,7 @@ namespace wm {
         } else {
             std::free(pBuffer);
             throwError("Bit depth not supported.",
-                "Wave::writeData(std::FILE *, size_t)");
+                "Wave::writeData(std::FILE*, uint32_t)");
         }
         std::free(pBuffer);
     }
@@ -566,7 +673,7 @@ namespace wm {
         m_waveProperties.setSamplingFrequency(sampleRate);
     }
 
-    std::ostream &operator<<(std::ostream &os, const Wave &wav)
+    std::ostream& operator<<(std::ostream& os, const Wave& wav)
     {
         os << "ChunkID: " << std::string(wav.m_combinedHeader.riff.descriptor.id)
             .substr(0, sizeof(wav.m_combinedHeader.riff.descriptor.id)) << std::endl;
@@ -574,9 +681,9 @@ namespace wm {
         os << "Format: " << std::string(wav.m_combinedHeader.riff.type)
             .substr(0, sizeof(wav.m_combinedHeader.riff.type)) << std::endl;
         os << "----------" << std::endl;
-        os << "Subchunk1ID: " << std::string(wav.m_combinedHeader.riff.descriptor.id)
+        os << "Subchunk1ID: " << std::string(wav.m_combinedHeader.wave.descriptor.id)
             .substr(0, sizeof(wav.m_combinedHeader.wave.descriptor.id)) << std::endl;
-        os << "Subchunk1Size: " << wav.m_waveProperties.getRiffChunkSize() << std::endl;
+        os << "Subchunk1Size: " << wav.m_waveProperties.getFmtChunkSize() << std::endl;
         os << "AudioFormat: " << wav.m_waveProperties.getAudioFormat() << std::endl;
         os << "NumChannels: " << wav.m_waveProperties.getNumChannels() << std::endl;
         os << "SampleRate: " << wav.m_waveProperties.getSamplingFrequency() << std::endl;

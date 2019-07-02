@@ -51,21 +51,25 @@ namespace wm {
 
         WaveProperties m_waveProperties;
 
+        void setFourCharacterCodes();
         void generateHeader();
         template <typename T> T reverseBytes(T val);
-        void changeBufferEndianness(uint8_t* bytes, size_t sampleLength, size_t bufferLength);
+        void changeBufferEndianness(uint8_t* bytes, uint32_t sampleLength, uint32_t bufferLength);
         bool isCpuBigEndian() const;
         void setWaveProperties(bool onlyDataChunk = false);
+        void copySamples(float* source, float* destination, uint32_t count, uint32_t srcOffset = 0, uint32_t destOffset = 0);
 
         void findDataChunk(std::FILE* pFile);
         bool peekForId(const std::string& id, std::FILE* pFile);
 
-
     public:
         Wave();
+        Wave(uint32_t numFrames, uint16_t numChannels = 2, uint16_t bitDepth = 16, uint32_t sampleRate = 44100);
 
         Wave(const char* filename);
         Wave(const std::string& filename);
+
+        Wave(const Wave& other);
 
         ~Wave();
 
@@ -76,9 +80,13 @@ namespace wm {
         std::vector<float> getBuffer(uint32_t offset, uint32_t sampleCount, int channel = 0) const;
         void changeVolume(float volume, int channel = 0);
         void downmixToMono();
+        static Wave generateTestSineWave(float sineFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
+        static Wave generateTestSquareWave(float sqrFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
         bool isLittleEndian() const;
+        void reserveMemory(uint32_t numSamples);
+        void resizeMemory(uint32_t numSamples, bool zeroInit = true);
         void reverse(int channel = 0);
-        void setLittleEndian(bool val);
+        void setLittleEndian(bool isLittleEndian);
         void swapChannels();
         void zeroInitHeader();
 
