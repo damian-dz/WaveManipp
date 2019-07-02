@@ -45,7 +45,6 @@ namespace wm {
         uint16_t getBlockAlign() const;
         uint16_t getNumBitsPerSample() const;
         uint32_t getDataChunkSize() const;
-
     };
 
 }

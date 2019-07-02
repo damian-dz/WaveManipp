@@ -14,18 +14,18 @@ namespace wm {
         static_assert(sizeof(float) == sizeof(uint32_t), "float must be 32 bits wide");
 
     private:
-        struct chunk {
+        struct Descriptor {
             char id[4];
             uint32_t size;
         };
 
-        struct RIFFHeader {
-            chunk descriptor;
+        struct RIFFChunk {
+            Descriptor descriptor;
             char type[4];
         };
 
-        struct WAVEHeader {
-            chunk descriptor;
+        struct FmtSubChunk {
+            Descriptor descriptor;
             uint16_t audioFormat;
             uint16_t numChannels;
             uint32_t sampleRate;
@@ -34,17 +34,17 @@ namespace wm {
             uint16_t bitsPerSample;
         };
 
-        struct DATAHeader {
-            chunk descriptor;
+        struct DataSubChunk {
+            Descriptor descriptor;
         };
 
-        struct CombinedHeader {
-            RIFFHeader riff;
-            WAVEHeader wave;
+        struct Header {
+            RIFFChunk riff;
+            FmtSubChunk wave;
         };
 
-        CombinedHeader m_combinedHeader;
-        DATAHeader m_dataHeader;
+        Header m_header;
+        DataSubChunk m_dataSubChunk;
         uint32_t m_numSamples;
         float* m_pData;
         bool m_isLittleEndian;
@@ -64,30 +64,32 @@ namespace wm {
 
     public:
         Wave();
-        Wave(uint32_t numFrames, uint16_t numChannels = 2, uint16_t bitDepth = 16, uint32_t sampleRate = 44100);
-
         Wave(const char* filename);
         Wave(const std::string& filename);
-
+        Wave(uint32_t numFrames, uint16_t numChannels = 2, uint16_t bitDepth = 16, uint32_t sampleRate = 44100);
         Wave(const Wave& other);
-
         ~Wave();
 
         void open(const char* filename, uint32_t bufferSize = 24576);
         void open(const std::string& filename, uint32_t bufferSize = 24576);
         void readData(std::FILE* file, uint32_t bufferSize = 24576);
 
-        std::vector<float> getBuffer(uint32_t offset, uint32_t sampleCount, int channel = 0) const;
+        float avgValue(int channel = 0) const;
         void changeVolume(float volume, int channel = 0);
         void downmixToMono();
         static Wave generateTestSineWave(float sineFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
         static Wave generateTestSquareWave(float sqrFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
+        static Wave generateTestTriangleWave(float sqrFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
+        std::vector<float> getBuffer(uint32_t offset, uint32_t sampleCount, int channel = 0) const;
+        bool isEmpty() const;
         bool isLittleEndian() const;
-        void reserveMemory(uint32_t numSamples);
+        float maxValue(int channel = 0) const;
+        float minValue(int channel = 0) const;
+        void reserveMemory(uint32_t numSamples, bool zeroInit = false);
         void resizeMemory(uint32_t numSamples, bool zeroInit = true);
         void reverse(int channel = 0);
         void setLittleEndian(bool isLittleEndian);
-        void swapChannels();
+        void swapChannels(int from = 0, int to = 1);
         void zeroInitHeader();
 
         void saveAs(const char* filename, uint32_t bufferSize = 24576);
@@ -99,6 +101,7 @@ namespace wm {
 
         uint32_t getDataChunkSize() const;
         uint16_t getNumChannels() const;
+        uint32_t getNumFrames() const;
         uint32_t getNumSamples() const;
         uint16_t getSampleBitDepth() const;
 

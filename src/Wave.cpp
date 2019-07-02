@@ -12,20 +12,6 @@ namespace wm {
         zeroInitHeader();
     }
 
-    Wave::Wave(uint32_t numFrames, uint16_t numChannels, uint16_t bitDepth, uint32_t sampleRate)
-    {
-        zeroInitHeader();
-        setFourCharacterCodes();
-        m_waveProperties.setNumChannels(numChannels);
-        m_isLittleEndian = true;
-        m_numSamples = numChannels * numFrames;
-        reserveMemory(m_numSamples);
-        setSampleRate(sampleRate);
-        setSampleBitDepth(bitDepth);
-        m_waveProperties.setRiffChunkSize(m_waveProperties.getDataChunkSize() + 36);
-        m_waveProperties.setFmtChunkSize(16);
-    }
-
     /*!
      * \brief Loads the specified file into a Wave object in its entirety.
      * \param filename &mdash; the name of the file
@@ -46,19 +32,37 @@ namespace wm {
         open(filename);
     }
 
+    Wave::Wave(uint32_t numFrames, uint16_t numChannels, uint16_t bitDepth, uint32_t sampleRate)
+    {
+        zeroInitHeader();
+        setFourCharacterCodes();
+        m_waveProperties.setNumChannels(numChannels);
+        m_isLittleEndian = true;
+        m_numSamples = numChannels * numFrames;
+        reserveMemory(m_numSamples);
+        setSampleRate(sampleRate);
+        setSampleBitDepth(bitDepth);
+        m_waveProperties.setRiffChunkSize(m_waveProperties.getDataChunkSize() + 36);
+        m_waveProperties.setFmtChunkSize(16);
+    }
+
     /*!
      * \brief Creates a deep copy of the input Wave object.
      * \param other &mdash; the object to copy
      */
     Wave::Wave(const Wave& other) :
-        m_combinedHeader(other.m_combinedHeader),
-        m_dataHeader(other.m_dataHeader),
+        m_header(other.m_header),
+        m_dataSubChunk(other.m_dataSubChunk),
         m_waveProperties(other.m_waveProperties),
         m_numSamples(other.m_numSamples),
         m_isLittleEndian(other.m_isLittleEndian)
     {
-        reserveMemory(other.m_numSamples);
-        copySamples(other.m_pData, m_pData, m_numSamples);
+        if (other.m_pData != nullptr) {
+            reserveMemory(other.m_numSamples);
+            copySamples(other.m_pData, m_pData, m_numSamples);
+        } else {
+            m_pData = nullptr;
+        }    
     }
 
     /*!
@@ -75,13 +79,13 @@ namespace wm {
     void Wave::setFourCharacterCodes()
     {
         if (m_isLittleEndian) {
-            std::memcpy(m_combinedHeader.riff.descriptor.id, "RIFF", 4);
+            std::memcpy(m_header.riff.descriptor.id, "RIFF", 4);
         } else {
-            std::memcpy(m_combinedHeader.riff.descriptor.id, "RIFX", 4);
+            std::memcpy(m_header.riff.descriptor.id, "RIFX", 4);
         }
-        std::memcpy(m_combinedHeader.riff.type, "WAVE", 4);
-        std::memcpy(m_combinedHeader.wave.descriptor.id, "fmt ", 4);
-        std::memcpy(m_dataHeader.descriptor.id, "data", 4);
+        std::memcpy(m_header.riff.type, "WAVE", 4);
+        std::memcpy(m_header.wave.descriptor.id, "fmt ", 4);
+        std::memcpy(m_dataSubChunk.descriptor.id, "data", 4);
     }
 
     void Wave::generateHeader()
@@ -91,24 +95,24 @@ namespace wm {
         bool isCpuLittleEndian = !isCpuBigEndian();
         bool isEndiannessMismatched = isCpuLittleEndian != m_isLittleEndian;
 
-        m_combinedHeader.riff.descriptor.size = isEndiannessMismatched ?
+        m_header.riff.descriptor.size = isEndiannessMismatched ?
             reverseBytes<uint32_t>(m_waveProperties.getRiffChunkSize()) : m_waveProperties.getRiffChunkSize();
-        m_combinedHeader.wave.descriptor.size = isEndiannessMismatched ?
+        m_header.wave.descriptor.size = isEndiannessMismatched ?
             reverseBytes<uint32_t>(m_waveProperties.getFmtChunkSize()) : m_waveProperties.getFmtChunkSize();
-        m_combinedHeader.wave.audioFormat = isEndiannessMismatched ?
+        m_header.wave.audioFormat = isEndiannessMismatched ?
             reverseBytes<uint16_t>(m_waveProperties.getAudioFormat()) : m_waveProperties.getAudioFormat();
-        m_combinedHeader.wave.numChannels = isEndiannessMismatched ?
+        m_header.wave.numChannels = isEndiannessMismatched ?
             reverseBytes<uint16_t>(m_waveProperties.getNumChannels()) : m_waveProperties.getNumChannels();
-        m_combinedHeader.wave.sampleRate = isEndiannessMismatched ?
+        m_header.wave.sampleRate = isEndiannessMismatched ?
             reverseBytes<uint32_t>(m_waveProperties.getSamplingFrequency()) : m_waveProperties.getSamplingFrequency();
-        m_combinedHeader.wave.byteRate = isEndiannessMismatched ?
+        m_header.wave.byteRate = isEndiannessMismatched ?
             reverseBytes<uint32_t>(m_waveProperties.getNumBytesPerSecond()) : m_waveProperties.getNumBytesPerSecond();
-        m_combinedHeader.wave.blockAlign = isEndiannessMismatched ?
+        m_header.wave.blockAlign = isEndiannessMismatched ?
             reverseBytes<uint16_t>(m_waveProperties.getBlockAlign()) : m_waveProperties.getBlockAlign();
-        m_combinedHeader.wave.bitsPerSample = isEndiannessMismatched ?
+        m_header.wave.bitsPerSample = isEndiannessMismatched ?
             reverseBytes<uint16_t>(m_waveProperties.getNumBitsPerSample()) : m_waveProperties.getNumBitsPerSample();
 
-        m_dataHeader.descriptor.size = isEndiannessMismatched ?
+        m_dataSubChunk.descriptor.size = isEndiannessMismatched ?
             reverseBytes<uint32_t>(m_waveProperties.getDataChunkSize()) : m_waveProperties.getDataChunkSize();
     }
 
@@ -142,34 +146,39 @@ namespace wm {
         bool isEndiannessMismatched = isCpuLittleEndian != m_isLittleEndian;
         if (!onlyDataChunk) {
             m_waveProperties.setRiffChunkSize(isEndiannessMismatched ?
-                reverseBytes<uint32_t>(m_combinedHeader.riff.descriptor.size) : m_combinedHeader.riff.descriptor.size);
+                reverseBytes<uint32_t>(m_header.riff.descriptor.size) : m_header.riff.descriptor.size);
             m_waveProperties.setFmtChunkSize(isEndiannessMismatched ?
-                reverseBytes<uint32_t>(m_combinedHeader.wave.descriptor.size) : m_combinedHeader.wave.descriptor.size);
+                reverseBytes<uint32_t>(m_header.wave.descriptor.size) : m_header.wave.descriptor.size);
             m_waveProperties.setAudioFormat(isEndiannessMismatched ?
-                reverseBytes<uint16_t>(m_combinedHeader.wave.audioFormat) : m_combinedHeader.wave.audioFormat);
+                reverseBytes<uint16_t>(m_header.wave.audioFormat) : m_header.wave.audioFormat);
             m_waveProperties.setNumChannels(isEndiannessMismatched ?
-                reverseBytes<uint16_t>(m_combinedHeader.wave.numChannels) : m_combinedHeader.wave.numChannels);
+                reverseBytes<uint16_t>(m_header.wave.numChannels) : m_header.wave.numChannels);
             m_waveProperties.setSamplingFrequency(isEndiannessMismatched ?
-                reverseBytes<uint32_t>(m_combinedHeader.wave.sampleRate) : m_combinedHeader.wave.sampleRate);
+                reverseBytes<uint32_t>(m_header.wave.sampleRate) : m_header.wave.sampleRate);
             m_waveProperties.setNumBytesPerSecond(isEndiannessMismatched ?
-                reverseBytes<uint32_t>(m_combinedHeader.wave.byteRate) : m_combinedHeader.wave.byteRate);
+                reverseBytes<uint32_t>(m_header.wave.byteRate) : m_header.wave.byteRate);
             m_waveProperties.setBlockAlign(isEndiannessMismatched ?
-                reverseBytes<uint16_t>(m_combinedHeader.wave.blockAlign) : m_combinedHeader.wave.blockAlign);
+                reverseBytes<uint16_t>(m_header.wave.blockAlign) : m_header.wave.blockAlign);
             m_waveProperties.setNumBitsPerSample(isEndiannessMismatched ?
-                reverseBytes<uint16_t>(m_combinedHeader.wave.bitsPerSample) : m_combinedHeader.wave.bitsPerSample);
+                reverseBytes<uint16_t>(m_header.wave.bitsPerSample) : m_header.wave.bitsPerSample);
         } else {
             m_waveProperties.setDataChunkSize(isEndiannessMismatched ?
-                reverseBytes<uint32_t>(m_dataHeader.descriptor.size) : m_dataHeader.descriptor.size);
+                reverseBytes<uint32_t>(m_dataSubChunk.descriptor.size) : m_dataSubChunk.descriptor.size);
         }
     }
 
     /*!
      * \brief Reserves enough memory to store the specified number of samples using floating-point format.
      * \param numSamples &mdash; the number of samples
+     * \param zeroInit &mdash; specifies if memory should be set to zero
      */
-    void Wave::reserveMemory(uint32_t numSamples)
+    void Wave::reserveMemory(uint32_t numSamples, bool zeroInit)
     {
-        m_pData = reinterpret_cast<float*>(std::malloc(numSamples * sizeof(m_pData)));
+        if (!zeroInit) {
+            m_pData = reinterpret_cast<float*>(std::malloc(numSamples * sizeof(m_pData)));
+        } else {
+            m_pData = reinterpret_cast<float*>(std::calloc(numSamples, sizeof(m_pData)));
+        }
     }
 
     /*!
@@ -183,15 +192,25 @@ namespace wm {
             throwError("The number of samples remains the same. Resize unnecessary.",
                 "Wave::resizeMemory(uint32_t, bool)");
         }
-        m_pData = reinterpret_cast<float*>(std::realloc(m_pData, numSamples * sizeof(m_pData)));
         uint32_t count = std::min(m_numSamples, numSamples);
         m_numSamples = numSamples;
         m_waveProperties.setDataChunkSize(numSamples * m_waveProperties.getNumBitsPerSample() / 8);
-        if (zeroInit) {
-            for (uint32_t i = count; i < numSamples; ++i) {
-                m_pData[i] = 0.f;
+        if (numSamples == 0) {
+            std::free(m_pData);
+            m_pData = nullptr;
+        } else {
+            float* pNewData = reinterpret_cast<float*>(std::realloc(m_pData, numSamples * sizeof(m_pData)));
+            if (pNewData == nullptr) {
+                throwError("Failed to reallocate memory.",
+                    "Wave::resizeMemory(uint32_t, bool)");
             }
-        }      
+            m_pData = pNewData;
+            if (zeroInit) {
+                for (uint32_t i = count; i < numSamples; ++i) {
+                    m_pData[i] = 0.f;
+                }
+            }
+        }
     }
 
     void Wave::copySamples(float* source, float* destination, uint32_t count, uint32_t srcOffset, uint32_t destOffset)
@@ -205,7 +224,7 @@ namespace wm {
         int pos = std::ftell(pFile);
         for (size_t i = 0; i < id.size(); ++i) {
             int c = std::fgetc(pFile);
-            if (id[i] != (char)c) {
+            if (id[i] != char(c)) {
                 res = false;
                 break;
             }
@@ -218,8 +237,8 @@ namespace wm {
     {
         int pos = std::ftell(pFile) + 2;
         std::fseek(pFile, pos, 0);
-        std::string idData = "data";
-        while (!peekForId(idData, pFile)) {
+        std::string id = "data";
+        while (!peekForId(id, pFile)) {
             pos += 2;
             std::fseek(pFile, pos, 0);
         }
@@ -235,13 +254,13 @@ namespace wm {
         std::FILE* pFile = std::fopen(filename, "rb");
         if (!pFile) {
             throwError("Failed to open the file.",
-                "Wave::open(const std::string&, size_t)");
+                "Wave::open(const std::string&, uint32_t)");
         }
-        std::fread(&m_combinedHeader, 1, sizeof(CombinedHeader), pFile);
+        std::fread(&m_header, 1, sizeof(Header), pFile);
 
-        if (std::memcmp(m_combinedHeader.riff.descriptor.id, "RIFF", 4) == 0) {
+        if (std::memcmp(m_header.riff.descriptor.id, "RIFF", 4) == 0) {
             m_isLittleEndian = true;
-        } else if (std::memcmp(m_combinedHeader.riff.descriptor.id, "RIFX", 4) == 0) {
+        } else if (std::memcmp(m_header.riff.descriptor.id, "RIFX", 4) == 0) {
             m_isLittleEndian = false;
         } else {
             throwError("Wrong format or file corrupt.",
@@ -257,7 +276,7 @@ namespace wm {
         if (!peekForId(std::string("data"), pFile)) {
             findDataChunk(pFile);
         }
-        std::fread(&m_dataHeader, 1, sizeof(DATAHeader), pFile);
+        std::fread(&m_dataSubChunk, 1, sizeof(DataSubChunk), pFile);
 
         setWaveProperties(true);
 
@@ -368,7 +387,7 @@ namespace wm {
         } else {
             std::free(pBuffer);
             throwError("Bit depth not supported.",
-                "Wave::readData(std::FILE *, size_t)");
+                "Wave::readData(std::FILE*, size_t)");
         }
         std::free(pBuffer);
     }
@@ -391,21 +410,37 @@ namespace wm {
         return buffer;
     }
 
+    bool Wave::isEmpty() const
+    {
+        return (m_pData == nullptr);
+    }
+
+    float Wave::avgValue(int channel) const
+    {
+        uint16_t numChannels = m_waveProperties.getNumChannels();
+        uint16_t offset = channel;
+        double sum = 0.;
+        for (uint32_t i = offset + numChannels; i < m_numSamples; i += numChannels) {
+            sum += m_pData[i];
+        }
+        return float(sum / getNumFrames());
+    }
+
     void Wave::changeVolume(float volume, int channel)
     { 
-        uint32_t numSamples = getNumSamples();
         uint16_t numChannels = m_waveProperties.getNumChannels();
-        uint32_t numFrames = numSamples / numChannels;
-        uint16_t offset = numChannels;
-        float max = std::numeric_limits<float>::min();
-        for (uint32_t i = offset; i < numSamples; i += numChannels) {
-            if (fabs(m_pData[i]) > max) {
-                max = fabs(m_pData[i]);
+        uint16_t offset = channel;
+        if (getNumFrames() > 1) {
+            float max = m_pData[offset];
+            for (uint32_t i = offset + numChannels; i < m_numSamples; i += numChannels) {
+                if (fabs(m_pData[i]) > max) {
+                    max = fabs(m_pData[i]);
+                }
             }
-        }
-        float factor = volume / max;
-        for (uint32_t i = offset; i < numSamples; i += numChannels) {
-            m_pData[i] *= factor;
+            float factor = volume / max;
+            for (uint32_t i = offset; i < m_numSamples; i += numChannels) {
+                m_pData[i] *= factor;
+            }
         }
     }
 
@@ -435,27 +470,40 @@ namespace wm {
         }
     }
 
-    Wave Wave::generateTestSineWave(float sineFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
+    Wave Wave::generateTestSineWave(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
     {
         Wave result(numFrames, 1);
         constexpr float coeff = 1.f - std::numeric_limits<float>::epsilon();
         float timeLimit = float(numFrames) / samplingFreq;
         float timeStep = timeLimit / (numFrames - 1);
-        float omega = 2 * 3.1415927f * sineFreq;
+        float omega = 2 * 3.1415927f * waveFreq;
         for (uint32_t i = 0; i < numFrames; ++i) {
             result.m_pData[i] = coeff * sinf(omega * (i * timeStep));
         }
         return result;
     }
 
-    Wave Wave::generateTestSquareWave(float sqrFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
+    Wave Wave::generateTestSquareWave(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
     {
         Wave result(numFrames, 1);
-        float timeLimit = float(numFrames) / samplingFreq;
-        float timeStep = timeLimit / (numFrames - 1);
-        float omega = 2 * 3.1415927f * sqrFreq;
+        float timeStep = float(numFrames) / samplingFreq / (numFrames - 1);
+        float omega = 2 * 3.1415927f * waveFreq;
+        constexpr float coeff = 1.f - std::numeric_limits<float>::epsilon();
         for (uint32_t i = 0; i < numFrames; ++i) {
-            result.m_pData[i] = sinf(omega * (i * timeStep)) < 0 ? -1.f : 1.f;
+            result.m_pData[i] = sinf(omega * (i * timeStep)) < 0 ? -1.f * coeff : 1.f * coeff;
+        }
+        return result;
+    }
+
+    Wave Wave::generateTestTriangleWave(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
+    {
+        Wave result(numFrames, 1);
+        float timeStep = float(numFrames) / samplingFreq / (numFrames - 1);
+        constexpr float pi = 3.1415927f;
+        constexpr float coeff = 2 * (1.f - std::numeric_limits<float>::epsilon()) / pi;
+        float omega = 2 * pi * waveFreq;
+        for (uint32_t i = 0; i < numFrames; ++i) {
+            result.m_pData[i] = coeff * asinf(sinf(omega * (i * timeStep)));
         }
         return result;
     }
@@ -467,6 +515,38 @@ namespace wm {
     bool Wave::isLittleEndian() const
     {
         return m_isLittleEndian;
+    }
+
+    float Wave::maxValue(int channel) const
+    {
+        uint16_t numChannels = m_waveProperties.getNumChannels();
+        uint16_t offset = channel;
+        float max = 0.f;
+        if (getNumFrames() > 1) {
+            max = m_pData[offset];
+            for (uint32_t i = offset + numChannels; i < m_numSamples; i += numChannels) {
+                if (m_pData[i] > max) {
+                    max = m_pData[i];
+                }
+            }
+        }
+        return max;
+    }
+
+    float Wave::minValue(int channel) const
+    {
+        uint16_t numChannels = m_waveProperties.getNumChannels();
+        uint16_t offset = channel;
+        float min = 0.f;
+        if (getNumFrames() > 1) {
+            min = m_pData[offset];
+            for (uint32_t i = offset + numChannels; i < m_numSamples; i += numChannels) {
+                if (m_pData[i] < min) {
+                    min = m_pData[i];
+                }
+            }
+        }
+        return min;
     }
 
     void Wave::reverse(int channel)
@@ -488,25 +568,28 @@ namespace wm {
         m_isLittleEndian = isLittleEndian;
     }
 
-    void Wave::swapChannels()
+    void Wave::swapChannels(int from, int to)
     {
-        int numSamples = getNumSamples();
-        if (getNumChannels() != 2) {
-            throwError("The number of channels must be two.",
+        uint32_t numSamples = getNumSamples();
+        uint16_t numChannels = getNumChannels();
+        if (numChannels < 2) {
+            throwError("The number of channels must be at least two.",
                 "Wave::swapChannels()");
         }
-
-        for (int i = 0; i < numSamples; i += 2) {
-            float val = m_pData[i];
-            m_pData[i] = m_pData[i + 1];
-            m_pData[i + 1] = val;
+        int idx1 = std::min(from, to);
+        int idx2 = std::max(from, to);
+        int offset = idx2 - idx1;
+        for (uint32_t i = idx1; i < numSamples; i += numChannels) {
+            float sample = m_pData[i];
+            m_pData[i] = m_pData[i + offset];
+            m_pData[i + offset] = sample;
         }
     }
 
     void Wave::zeroInitHeader()
     {
-        std::memset(&m_combinedHeader, 0, sizeof(CombinedHeader));
-        std::memset(&m_dataHeader, 0, sizeof(DATAHeader));
+        std::memset(&m_header, 0, sizeof(Header));
+        std::memset(&m_dataSubChunk, 0, sizeof(DataSubChunk));
     }
 
     /*!
@@ -525,6 +608,11 @@ namespace wm {
     uint16_t Wave::getNumChannels() const
     {
         return m_waveProperties.getNumChannels();
+    }
+
+    uint32_t Wave::getNumFrames() const
+    {
+        return m_numSamples / m_waveProperties.getNumChannels();
     }
 
     uint32_t Wave::getNumSamples() const
@@ -549,8 +637,8 @@ namespace wm {
                 "Wave::saveAs(const char*, uint32_t)");
         }
         generateHeader();
-        std::fwrite(&m_combinedHeader, 1, sizeof(CombinedHeader), pFile);
-        std::fwrite(&m_dataHeader, 1, sizeof(DATAHeader), pFile);
+        std::fwrite(&m_header, 1, sizeof(Header), pFile);
+        std::fwrite(&m_dataSubChunk, 1, sizeof(DataSubChunk), pFile);
         writeData(pFile, bufferSize);
         std::fclose(pFile);
     }
@@ -663,7 +751,8 @@ namespace wm {
         m_waveProperties.setNumBitsPerSample(sampleBitDepth);
         m_waveProperties.setAudioFormat(sampleBitDepth != 32 ? 1 : 3);
         uint16_t numChannels = m_waveProperties.getNumChannels();
-        m_waveProperties.setNumBytesPerSecond(numChannels * m_waveProperties.getSamplingFrequency() * sampleBitDepth / 8);
+        m_waveProperties.setNumBytesPerSecond(
+            numChannels * m_waveProperties.getSamplingFrequency() * sampleBitDepth / 8);
         m_waveProperties.setBlockAlign(numChannels * sampleBitDepth / 8);
         m_waveProperties.setDataChunkSize(m_numSamples * sampleBitDepth / 8);
     }
@@ -675,14 +764,14 @@ namespace wm {
 
     std::ostream& operator<<(std::ostream& os, const Wave& wav)
     {
-        os << "ChunkID: " << std::string(wav.m_combinedHeader.riff.descriptor.id)
-            .substr(0, sizeof(wav.m_combinedHeader.riff.descriptor.id)) << std::endl;
+        os << "ChunkID: " << std::string(wav.m_header.riff.descriptor.id)
+            .substr(0, sizeof(wav.m_header.riff.descriptor.id)) << std::endl;
         os << "ChunkSize: " << wav.m_waveProperties.getRiffChunkSize() << std::endl;
-        os << "Format: " << std::string(wav.m_combinedHeader.riff.type)
-            .substr(0, sizeof(wav.m_combinedHeader.riff.type)) << std::endl;
+        os << "Format: " << std::string(wav.m_header.riff.type)
+            .substr(0, sizeof(wav.m_header.riff.type)) << std::endl;
         os << "----------" << std::endl;
-        os << "Subchunk1ID: " << std::string(wav.m_combinedHeader.wave.descriptor.id)
-            .substr(0, sizeof(wav.m_combinedHeader.wave.descriptor.id)) << std::endl;
+        os << "Subchunk1ID: " << std::string(wav.m_header.wave.descriptor.id)
+            .substr(0, sizeof(wav.m_header.wave.descriptor.id)) << std::endl;
         os << "Subchunk1Size: " << wav.m_waveProperties.getFmtChunkSize() << std::endl;
         os << "AudioFormat: " << wav.m_waveProperties.getAudioFormat() << std::endl;
         os << "NumChannels: " << wav.m_waveProperties.getNumChannels() << std::endl;
@@ -691,8 +780,8 @@ namespace wm {
         os << "BlockAlign: " << wav.m_waveProperties.getBlockAlign() << std::endl;
         os << "BitsPerSample: " << wav.m_waveProperties.getNumBitsPerSample() << std::endl;
         os << "----------" << std::endl;
-        os << "Subchunk2ID: " << std::string(wav.m_dataHeader.descriptor.id)
-            .substr(0, sizeof(wav.m_dataHeader.descriptor.id)) << std::endl;
+        os << "Subchunk2ID: " << std::string(wav.m_dataSubChunk.descriptor.id)
+            .substr(0, sizeof(wav.m_dataSubChunk.descriptor.id)) << std::endl;
         os << "Subchunk2Size: " << wav.m_waveProperties.getDataChunkSize() << std::endl << std::endl;
         return os;
     }
