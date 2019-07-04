@@ -45,20 +45,19 @@ namespace wm {
 
         Header m_header;
         DataSubChunk m_dataSubChunk;
+        bool m_isLittleEndian;
         uint32_t m_numSamples;
         float* m_pData;
-        bool m_isLittleEndian;
-
         WaveProperties m_waveProperties;
 
         void setFourCharacterCodes();
         void generateHeader();
         template <typename T> T reverseBytes(T val);
-        void changeBufferEndianness(uint8_t* bytes, uint32_t sampleLength, uint32_t bufferLength);
+        void changeBufferEndianness(uint8_t* bytes, uint32_t sampleSize, uint32_t bufferSize);
         bool isCpuBigEndian() const;
         void setWaveProperties(bool onlyDataChunk = false);
-        void copySamples(float* source, float* destination, uint32_t count, uint32_t srcOffset = 0, uint32_t destOffset = 0);
-
+        void copySamples(const float* source, float* destination, uint32_t count, uint32_t srcOffset = 0,
+                         uint32_t destOffset = 0);
         void findDataChunk(std::FILE* pFile);
         bool peekForId(const std::string& id, std::FILE* pFile);
 
@@ -74,15 +73,17 @@ namespace wm {
         void open(const std::string& filename, uint32_t bufferSize = 24576);
         void readData(std::FILE* file, uint32_t bufferSize = 24576);
 
+        Wave& append(const Wave& other);
         float avgValue(int channel = 0) const;
         void changeVolume(float volume, int channel = 0);
         void downmixToMono();
-        static Wave generateTestSineWave(float sineFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
-        static Wave generateTestSquareWave(float sqrFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
-        static Wave generateTestTriangleWave(float sqrFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
+        static Wave generateSine(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
+        static Wave generateSquare(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
+        static Wave generateTriangle(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
         std::vector<float> getBuffer(uint32_t offset, uint32_t sampleCount, int channel = 0) const;
         bool isEmpty() const;
         bool isLittleEndian() const;
+        bool isMono() const;
         float maxValue(int channel = 0) const;
         float minValue(int channel = 0) const;
         void reserveMemory(uint32_t numSamples, bool zeroInit = false);

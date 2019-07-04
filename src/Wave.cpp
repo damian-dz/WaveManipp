@@ -16,7 +16,8 @@ namespace wm {
      * \brief Loads the specified file into a Wave object in its entirety.
      * \param filename &mdash; the name of the file
      */
-    Wave::Wave(const char* filename)
+    Wave::Wave(const char* filename) :
+        m_pData(nullptr)
     {
         zeroInitHeader();
         open(filename);
@@ -26,19 +27,20 @@ namespace wm {
      * \brief Loads the specified file into a Wave object in its entirety.
      * \param filename &mdash; the name of the file
      */
-    Wave::Wave(const std::string& filename)
+    Wave::Wave(const std::string& filename) :
+        m_pData(nullptr)
     {
         zeroInitHeader();
         open(filename);
     }
 
-    Wave::Wave(uint32_t numFrames, uint16_t numChannels, uint16_t bitDepth, uint32_t sampleRate)
+    Wave::Wave(uint32_t numFrames, uint16_t numChannels, uint16_t bitDepth, uint32_t sampleRate) :
+        m_isLittleEndian(true),
+        m_numSamples(numChannels * numFrames)
     {
         zeroInitHeader();
         setFourCharacterCodes();
         m_waveProperties.setNumChannels(numChannels);
-        m_isLittleEndian = true;
-        m_numSamples = numChannels * numFrames;
         reserveMemory(m_numSamples);
         setSampleRate(sampleRate);
         setSampleBitDepth(bitDepth);
@@ -116,10 +118,10 @@ namespace wm {
             reverseBytes<uint32_t>(m_waveProperties.getDataChunkSize()) : m_waveProperties.getDataChunkSize();
     }
 
-    void Wave::changeBufferEndianness(uint8_t* buffer, uint32_t sampleLength, uint32_t bufferLength)
+    void Wave::changeBufferEndianness(uint8_t* buffer, uint32_t sampleSize, uint32_t bufferSize)
     {
-        for (uint32_t i = 0; i < bufferLength; i += sampleLength) {
-            uint32_t j = i + sampleLength - 1;
+        for (uint32_t i = 0; i < bufferSize; i += sampleSize) {
+            uint32_t j = i + sampleSize - 1;
             uint32_t k = i;
             while (j > k) {
                 uint8_t u8 = buffer[j];
@@ -195,6 +197,7 @@ namespace wm {
         uint32_t count = std::min(m_numSamples, numSamples);
         m_numSamples = numSamples;
         m_waveProperties.setDataChunkSize(numSamples * m_waveProperties.getNumBitsPerSample() / 8);
+        m_waveProperties.setRiffChunkSize(m_waveProperties.getDataChunkSize() + 36);
         if (numSamples == 0) {
             std::free(m_pData);
             m_pData = nullptr;
@@ -206,14 +209,12 @@ namespace wm {
             }
             m_pData = pNewData;
             if (zeroInit) {
-                for (uint32_t i = count; i < numSamples; ++i) {
-                    m_pData[i] = 0.f;
-                }
+                std::memset(&m_pData[count], 0, (numSamples - count) * sizeof(m_pData));
             }
         }
     }
 
-    void Wave::copySamples(float* source, float* destination, uint32_t count, uint32_t srcOffset, uint32_t destOffset)
+    void Wave::copySamples(const float* source, float* destination, uint32_t count, uint32_t srcOffset, uint32_t destOffset)
     {
         std::memcpy(&destination[destOffset], &source[srcOffset], count * sizeof(float));
     }
@@ -415,6 +416,32 @@ namespace wm {
         return (m_pData == nullptr);
     }
 
+    /*!
+     * \brief Appends the <i>other</i> Wave object to the current one.
+     * \details If the current object has more than one channel and the other one is mono,
+                it is appended to each of the channels.
+     * \param other &mdash; the object to append
+     * \result A reference to itself.
+     */
+    Wave& Wave::append(const Wave& other)
+    {
+        if (other.getNumChannels() == getNumChannels()) {
+            uint32_t numSamples = m_numSamples;
+            resizeMemory(numSamples + other.getNumSamples());
+            copySamples(other.m_pData, m_pData, other.m_numSamples, 0, numSamples);
+        } else if (!isMono() && other.isMono()) {
+            uint32_t numSamples = m_numSamples;
+            uint16_t numChannels = getNumChannels();
+            resizeMemory(numSamples + other.getNumSamples() * numChannels);
+            for (uint32_t y = numSamples; y < m_numSamples; y += numChannels) {
+                for (uint16_t x = 0; x < numChannels; ++x) {
+                    m_pData[y + x] = other.m_pData[(y - numSamples) / numChannels];
+                }
+            }
+        }
+        return *this;
+    }
+
     float Wave::avgValue(int channel) const
     {
         uint16_t numChannels = m_waveProperties.getNumChannels();
@@ -470,40 +497,55 @@ namespace wm {
         }
     }
 
-    Wave Wave::generateTestSineWave(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
+    /*!
+     * \brief Generates a single-channel sine wave.
+     * \param waveFreq &mdash; the frequency of the wave, in Hz
+     * \param phaseShift &mdash; the phase shift of the wave, in seconds
+     * \param samplingFreq &mdash; the sampling frequency, in Hz
+     * \param numFrames &mdash; the number of audio frames to generate
+     * \result The generated sine wave.
+     */
+    Wave Wave::generateSine(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
     {
         Wave result(numFrames, 1);
         constexpr float coeff = 1.f - std::numeric_limits<float>::epsilon();
-        float timeLimit = float(numFrames) / samplingFreq;
-        float timeStep = timeLimit / (numFrames - 1);
+        float timeStep = float(numFrames) / samplingFreq / numFrames;
         float omega = 2 * 3.1415927f * waveFreq;
         for (uint32_t i = 0; i < numFrames; ++i) {
-            result.m_pData[i] = coeff * sinf(omega * (i * timeStep));
+            result.m_pData[i] = coeff * sinf(omega * (i * timeStep + phaseShift));
         }
         return result;
     }
 
-    Wave Wave::generateTestSquareWave(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
+    /*!
+     * \brief Generates a single-channel square wave.
+     * \param waveFreq &mdash; the frequency of the wave, in Hz
+     * \param phaseShift &mdash; the phase shift of the wave, in seconds
+     * \param samplingFreq &mdash; the sampling frequency, in Hz
+     * \param numFrames &mdash; the number of audio frames to generate
+     * \result The generated square wave.
+     */
+    Wave Wave::generateSquare(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
     {
         Wave result(numFrames, 1);
-        float timeStep = float(numFrames) / samplingFreq / (numFrames - 1);
+        float timeStep = float(numFrames) / samplingFreq / numFrames;
         float omega = 2 * 3.1415927f * waveFreq;
         constexpr float coeff = 1.f - std::numeric_limits<float>::epsilon();
         for (uint32_t i = 0; i < numFrames; ++i) {
-            result.m_pData[i] = sinf(omega * (i * timeStep)) < 0 ? -1.f * coeff : 1.f * coeff;
+            result.m_pData[i] = sinf(omega * (i * timeStep + phaseShift)) < 0 ? -1.f * coeff : 1.f * coeff;
         }
         return result;
     }
 
-    Wave Wave::generateTestTriangleWave(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
+    Wave Wave::generateTriangle(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
     {
         Wave result(numFrames, 1);
-        float timeStep = float(numFrames) / samplingFreq / (numFrames - 1);
+        float timeStep = float(numFrames) / samplingFreq / numFrames;
         constexpr float pi = 3.1415927f;
         constexpr float coeff = 2 * (1.f - std::numeric_limits<float>::epsilon()) / pi;
         float omega = 2 * pi * waveFreq;
         for (uint32_t i = 0; i < numFrames; ++i) {
-            result.m_pData[i] = coeff * asinf(sinf(omega * (i * timeStep)));
+            result.m_pData[i] = coeff * asinf(sinf(omega * (i * timeStep + phaseShift)));
         }
         return result;
     }
@@ -515,6 +557,11 @@ namespace wm {
     bool Wave::isLittleEndian() const
     {
         return m_isLittleEndian;
+    }
+
+    bool Wave::isMono() const
+    {
+        return (getNumChannels() == 1);
     }
 
     float Wave::maxValue(int channel) const
