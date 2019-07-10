@@ -49,16 +49,16 @@ private:
     float* m_pData;
     WaveProperties m_waveProperties;
 
-    void setFourCharacterCodes();
+    void copySamples(const float* source, float* destination, uint32_t count, uint32_t srcOffset = 0,
+                     uint32_t destOffset = 0);
     void generateHeader();
     template <typename T> T reverseBytes(T val);
     void changeBufferEndianness(uint8_t* bytes, uint32_t sampleSize, uint32_t bufferSize);
-    bool isCpuBigEndian() const;
-    void setWaveProperties(bool onlyDataChunk = false);
-    void copySamples(const float* source, float* destination, uint32_t count, uint32_t srcOffset = 0,
-        uint32_t destOffset = 0);
     void findDataChunk(std::FILE* pFile);
+    bool isCpuBigEndian() const;
     bool peekForId(const std::string& id, std::FILE* pFile);
+    void setFourCharacterCodes();
+    void setWaveProperties(bool onlyDataChunk = false);
 
 public:
     Wave();
