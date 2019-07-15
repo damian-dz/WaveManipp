@@ -402,8 +402,8 @@ std::vector<float> Wave::getBuffer(uint32_t offset, uint32_t sampleCount, int ch
     std::vector<float> buffer(sampleCount);
     uint16_t numChannels = int(m_waveProperties.getNumChannels());
     uint32_t absoluteOffset = numChannels * offset;
-    for (uint32_t i = channel; i < sampleCount; i += numChannels) {
-        buffer[i] = m_pData[absoluteOffset + i];
+    for (uint32_t i = channel; i < sampleCount * numChannels; i += numChannels) {
+        buffer[i / numChannels] = m_pData[absoluteOffset + i];
     }
     return buffer;
 }
@@ -492,6 +492,18 @@ void Wave::downmixToMono()
     }
 }
 
+Wave Wave::generateRandom(uint32_t samplingFreq, uint32_t numFrames)
+{
+    Wave result(numFrames, 1, 16, samplingFreq);
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<float> dis(-1.f, 1.f - std::numeric_limits<float>::epsilon());
+    for (uint32_t i = 0; i < numFrames; ++i) {
+        result.m_pData[i] = dis(gen);
+    }
+    return result;
+}
+
 /*!
  * \brief Generates a single-channel sine wave.
  * \param waveFreq &mdash; the frequency of the wave, in Hz
@@ -502,7 +514,7 @@ void Wave::downmixToMono()
  */
 Wave Wave::generateSine(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
 {
-    Wave result(numFrames, 1);
+    Wave result(numFrames, 1, 16, samplingFreq);
     constexpr float coeff = 1.f - std::numeric_limits<float>::epsilon();
     float timeStep = 1.f / samplingFreq;
     float omega = 2 * 3.1415927f * waveFreq;
@@ -522,7 +534,7 @@ Wave Wave::generateSine(float waveFreq, float phaseShift, uint32_t samplingFreq,
  */
 Wave Wave::generateSquare(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
 {
-    Wave result(numFrames, 1);
+    Wave result(numFrames, 1, 16, samplingFreq);
     float timeStep = 1.f / samplingFreq;
     float omega = 2 * 3.1415927f * waveFreq;
     constexpr float coeff = 1.f - std::numeric_limits<float>::epsilon();
@@ -542,7 +554,7 @@ Wave Wave::generateSquare(float waveFreq, float phaseShift, uint32_t samplingFre
  */
 Wave Wave::generateTriangle(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
 {
-    Wave result(numFrames, 1);
+    Wave result(numFrames, 1, 16, samplingFreq);
     float timeStep = 1.f / samplingFreq;
     constexpr float pi = 3.1415927f;
     constexpr float coeff = 2 * (1.f - std::numeric_limits<float>::epsilon()) / pi;
@@ -555,23 +567,24 @@ Wave Wave::generateTriangle(float waveFreq, float phaseShift, uint32_t samplingF
 
 std::vector<float> Wave::getAveragedOutData(uint32_t binSize, int channel) const
 {
-    uint16_t step = m_waveProperties.getNumChannels();
-    uint32_t resSize = m_numSamples / step / binSize;
-    uint32_t remainder = (m_numSamples / step) % binSize;
+    uint16_t numChannels = m_waveProperties.getNumChannels();
+    uint32_t numFrames = getNumFrames();
+    uint32_t numPoints = numFrames / binSize;
+    uint32_t remainder = numFrames % binSize;
     if (remainder != 0) {
-        ++resSize;
+        ++numPoints;
     }
-    std::vector<float> result(resSize);
-    for (uint32_t i = 0; i < resSize; ++i) {
+    std::vector<float> result(numPoints);
+    for (uint32_t i = 0; i < numPoints; ++i) {
         double sum = 0.;
         uint32_t endPoint = 0;
-        if (i == resSize - 1) {
-            endPoint = remainder == 0 ? binSize * step : remainder * step;
+        if (i == numPoints - 1) {
+            endPoint = remainder == 0 ? binSize * numChannels : remainder * numChannels;
         } else {
-            endPoint = binSize * step;
+            endPoint = binSize * numChannels;
         }
-        for (uint32_t j = channel; j < endPoint; j += step) {
-            sum += double(m_pData[i * binSize * step + j]);
+        for (uint32_t j = channel; j < endPoint; j += numChannels) {
+            sum += double(m_pData[i * binSize * numChannels + j]);
         }
         result[i] = float(sum / binSize);
     }
@@ -700,6 +713,16 @@ uint32_t Wave::getNumSamples() const
 uint16_t Wave::getSampleBitDepth() const
 {
     return m_waveProperties.getNumBitsPerSample();
+}
+
+float& Wave::operator()(uint32_t sample, int channel)
+{
+    return m_pData[sample * m_waveProperties.getNumChannels() + channel];
+}
+
+const float& Wave::operator()(uint32_t sample, int channel) const
+{
+    return m_pData[sample * m_waveProperties.getNumChannels() + channel];
 }
 
 void Wave::saveAs(const char* filename, uint32_t bufferSize)

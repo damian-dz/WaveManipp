@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef WAVE_H
 #define WAVE_H
 
@@ -76,6 +78,7 @@ public:
     float avgValue(int channel = 0) const;
     void changeVolume(float volume, int channel = 0);
     void downmixToMono();
+    static Wave generateRandom(uint32_t samplingFreq, uint32_t numFrames);
     static Wave generateSine(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
     static Wave generateSquare(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
     static Wave generateTriangle(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
@@ -107,6 +110,9 @@ public:
     uint16_t getSampleBitDepth() const;
 
     friend std::ostream& operator<<(std::ostream& os, const Wave& wav);
+
+    float& operator()(uint32_t sample, int channel);
+    const float& operator()(uint32_t sample, int channel) const;
 };
 }
 

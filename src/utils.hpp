@@ -1,13 +1,18 @@
+#pragma once
+
 #ifndef UTILS_H
 #define UTILS_H
 
 #include <algorithm>
 #include <iostream>
+#include <random>
 #include <string>
 #include <vector>
 
+#ifdef __GNUC__
 #include <cstring>
 #include <cmath>
+#endif
 
 [[noreturn]] inline void throwError(const std::string& errorMsg, const std::string& funcName = "")
 {

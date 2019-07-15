@@ -1,3 +1,5 @@
+#pragma once
+
 #ifndef WAVE_PROPERTIES_H
 #define WAVE_PROPERTIES_H
 
