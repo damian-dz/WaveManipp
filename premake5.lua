@@ -1,13 +1,14 @@
-workspace "WaveManip"
+workspace "WaveManipp"
     architecture "x64"
     configurations { "Debug", "Release" }
 
-project "WaveManip"
+project "WaveManipp"
     language "C++"
-	location "WaveManip"
+	location "WaveManipp"
     kind "StaticLib"
 	targetdir "bin/%{cfg.buildcfg}"
 	files {
+	    "src/**.h",
         "src/**.hpp",
         "src/**.cpp"
     }

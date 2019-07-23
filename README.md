@@ -1,3 +1,3 @@
-# WaveManip
+# WaveManipp
 
-**WaveManip** is intended to be a library for efficient uncompressed audio data manipulation.
+**WaveManipp** is intended to be a library for efficient uncompressed audio data manipulation.
