@@ -466,6 +466,9 @@ void Wave::changeVolume(float volume, int channel)
     }
 }
 
+/*!
+ * \brief Mixes the channels down to a mono track.
+ */
 void Wave::downmixToMono()
 {
     uint32_t numSamples = getNumSamples();
@@ -565,7 +568,7 @@ Wave Wave::generateTriangle(float waveFreq, float phaseShift, uint32_t samplingF
     return result;
 }
 
-std::vector<float> Wave::getAveragedOutData(uint32_t binSize, int channel) const
+std::vector<float> Wave::getAveragedOutData(uint32_t binSize, bool absolute, int channel) const
 {
     uint16_t numChannels = m_waveProperties.getNumChannels();
     uint32_t numFrames = getNumFrames();
@@ -583,8 +586,14 @@ std::vector<float> Wave::getAveragedOutData(uint32_t binSize, int channel) const
         } else {
             endPoint = binSize * numChannels;
         }
-        for (uint32_t j = channel; j < endPoint; j += numChannels) {
-            sum += double(m_pData[i * binSize * numChannels + j]);
+        if (!absolute) {
+            for (uint32_t j = channel; j < endPoint; j += numChannels) {
+                sum += double(m_pData[i * binSize * numChannels + j]);
+            }
+        } else {
+            for (uint32_t j = channel; j < endPoint; j += numChannels) {
+                sum += double(fabs(m_pData[i * binSize * numChannels + j]));
+            }
         }
         result[i] = float(sum / binSize);
     }
