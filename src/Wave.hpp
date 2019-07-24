@@ -87,6 +87,8 @@ public:
     static Wave generateTriangle(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
     std::vector<float> getAveragedOutData(uint32_t binSize, bool absolute = false, int channel = 0) const;
     std::vector<float> getBuffer(uint32_t offset, uint32_t sampleCount, int channel = 0) const;
+    void insertAudio(uint32_t offset, const float* audio, uint32_t numSamples);
+    void insertAudio(uint32_t offset, std::vector<float>& audio);
     bool isEmpty() const;
     bool isLittleEndian() const;
     bool isMono() const;
@@ -95,7 +97,8 @@ public:
     void reserveMemory(uint32_t numSamples, bool zeroInit = false);
     void resizeMemory(uint32_t numSamples, bool zeroInit = true);
     void reverse(int channel = 0);
-    void setAudio(std::vector<float>& audioData);
+    void setAudio(const float* audio, uint32_t numSamples);
+    void setAudio(std::vector<float>& audio);
     void setLittleEndian(bool isLittleEndian);
     void swapChannels(int from = 0, int to = 1);
     void zeroInitHeader();
@@ -112,11 +115,13 @@ public:
     uint32_t getNumFrames() const;
     uint32_t getNumSamples() const;
     uint16_t getSampleBitDepth() const;
+    uint32_t getSampleRate() const;
 
     friend std::ostream& operator<<(std::ostream& os, const Wave& wav);
 
     float& operator()(uint32_t sample, int channel);
     const float& operator()(uint32_t sample, int channel) const;
+    void operator=(const Wave& other);
 };
 }
 

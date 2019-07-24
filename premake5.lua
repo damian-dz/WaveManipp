@@ -8,7 +8,7 @@ project "WaveManipp"
     kind "StaticLib"
 	targetdir "bin/%{cfg.buildcfg}"
 	files {
-	    "src/**.h",
+        "src/**.h",
         "src/**.hpp",
         "src/**.cpp"
     }

@@ -34,7 +34,7 @@ Wave::Wave(const std::string& filename) :
 
 Wave::Wave(uint32_t numFrames, uint16_t numChannels, uint16_t bitDepth, uint32_t sampleRate) :
     m_isLittleEndian(true),
-    m_numSamples(numChannels* numFrames)
+    m_numSamples(numChannels * numFrames)
 {
     zeroInitHeader();
     setFourCharacterCodes();
@@ -426,6 +426,16 @@ std::vector<float> Wave::getBuffer(uint32_t offset, uint32_t sampleCount, int ch
     return buffer;
 }
 
+void Wave::insertAudio(uint32_t offset, const float* audio, uint32_t numSamples)
+{
+    std::memcpy(&m_pData[offset], audio, numSamples * sizeof(float));
+}
+
+void Wave::insertAudio(uint32_t offset, std::vector<float>& audio)
+{
+    insertAudio(offset, audio.data(), uint32_t(audio.size()));
+}
+
 bool Wave::isEmpty() const
 {
     return (m_pData == nullptr);
@@ -676,12 +686,17 @@ void Wave::reverse(int channel)
     }
 }
 
+void Wave::setAudio(const float* audio, uint32_t numSamples)
+{
+    if (numSamples != m_numSamples) {
+        resizeMemory(numSamples, false);
+    }
+    std::memcpy(m_pData, audio, m_numSamples * sizeof(float));
+}
+
 void Wave::setAudio(std::vector<float>& audio)
 {
-    if (audio.size() != m_numSamples) {
-        resizeMemory(audio.size(), false);
-    }
-    std::memcpy(m_pData, audio.data(), m_numSamples * sizeof(float));
+    setAudio(audio.data(), uint32_t(audio.size()));
 }
 
 void Wave::setLittleEndian(bool isLittleEndian)
@@ -756,14 +771,9 @@ uint16_t Wave::getSampleBitDepth() const
     return m_waveProperties.getNumBitsPerSample();
 }
 
-float& Wave::operator()(uint32_t sample, int channel)
+uint32_t Wave::getSampleRate() const
 {
-    return m_pData[sample * m_waveProperties.getNumChannels() + channel];
-}
-
-const float& Wave::operator()(uint32_t sample, int channel) const
-{
-    return m_pData[sample * m_waveProperties.getNumChannels() + channel];
+    return m_waveProperties.getSamplingFrequency();
 }
 
 void Wave::saveAs(const char* filename, uint32_t bufferSize)
@@ -891,6 +901,36 @@ void Wave::setSampleBitDepth(uint16_t sampleBitDepth)
 void Wave::setSampleRate(uint32_t sampleRate)
 {
     m_waveProperties.setSamplingFrequency(sampleRate);
+}
+
+float& Wave::operator()(uint32_t sample, int channel)
+{
+    return m_pData[sample * m_waveProperties.getNumChannels() + channel];
+}
+
+const float& Wave::operator()(uint32_t sample, int channel) const
+{
+    return m_pData[sample * m_waveProperties.getNumChannels() + channel];
+}
+
+void Wave::operator=(const Wave& other)
+{
+    m_header = other.m_header;
+    m_dataSubChunk = other.m_dataSubChunk;
+    m_isLittleEndian = other.m_isLittleEndian;
+    m_numSamples = other.m_numSamples;
+    m_waveProperties = other.m_waveProperties;
+    if (m_pData == nullptr) {
+        reserveMemory(other.m_numSamples);
+        copySamples(other.m_pData, m_pData, m_numSamples);
+    } else if (other.m_pData != nullptr && m_numSamples == other.m_numSamples) {
+        copySamples(other.m_pData, m_pData, m_numSamples);
+    } else if (other.m_pData != nullptr) {
+        resizeMemory(other.m_numSamples, false);
+        copySamples(other.m_pData, m_pData, m_numSamples);
+    } else {
+        m_pData = nullptr;
+    }
 }
 
 std::ostream& operator<<(std::ostream& os, const Wave& wav)
