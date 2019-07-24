@@ -6,7 +6,10 @@
 #include "Wave.hpp"
 
 namespace wm {
-
+/*!
+ * \brief A class that is useful for joining many Wave objects together.
+ * \details This class makes it possible to join multiple Wave objects without memory reallocation overhead.
+ */
 class WaveBuilder
 {
 public:

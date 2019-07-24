@@ -391,6 +391,24 @@ void Wave::readData(std::FILE* file, uint32_t bufferSize)
 }
 
 /*!
+ * \brief Provides a constant pointer to the underlying audio data.
+ * \result A <code>const</code> pointer to the audio data.
+ */
+const float* Wave::constAudioData() const
+{
+    return m_pData;
+}
+
+/*!
+ * \brief Provides a pointer to the underlying audio data.
+ * \result A pointer to the audio data.
+ */
+float* Wave::audioData() const
+{
+    return m_pData;
+}
+
+/*!
  * \brief Fetches a buffer from the Wave object as a vector of floating-point values.
  * \param offset &mdash; the sample offset for the specified channel
  * \param sampleCount &mdash; the number of samples to fetch
@@ -602,7 +620,7 @@ std::vector<float> Wave::getAveragedOutData(uint32_t binSize, bool absolute, int
 
 /*!
  * \brief Checks if the Wave object is set to be stored using little-endian representation.
- * \result <b>true</b> if it is little-endian (RIFF), <b>false</b> if it is big-endian (RIFX).
+ * \result <code>true</code> if it is little-endian (RIFF), <code>false</code> if it is big-endian (RIFX).
  */
 bool Wave::isLittleEndian() const
 {
@@ -658,6 +676,14 @@ void Wave::reverse(int channel)
     }
 }
 
+void Wave::setAudio(std::vector<float>& audio)
+{
+    if (audio.size() != m_numSamples) {
+        resizeMemory(audio.size(), false);
+    }
+    std::memcpy(m_pData, audio.data(), m_numSamples * sizeof(float));
+}
+
 void Wave::setLittleEndian(bool isLittleEndian)
 {
     m_isLittleEndian = isLittleEndian;
@@ -705,6 +731,12 @@ uint16_t Wave::getNumChannels() const
     return m_waveProperties.getNumChannels();
 }
 
+/*!
+ * \brief Gets the number of frames for the audio data.
+ * \details An audio frame comprises all samples that are played at the same time.
+            For a stereo track, the number of frames will be the number of samples divided by two.
+ * \result The number of frames.
+ */
 uint32_t Wave::getNumFrames() const
 {
     return m_numSamples / m_waveProperties.getNumChannels();

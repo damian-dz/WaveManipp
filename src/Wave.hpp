@@ -74,6 +74,9 @@ public:
     void open(const std::string& filename, uint32_t bufferSize = 24576);
     void readData(std::FILE* file, uint32_t bufferSize = 24576);
 
+    const float* constAudioData() const;
+    float* audioData() const;
+
     Wave& append(const Wave& other);
     float avgValue(int channel = 0) const;
     void changeVolume(float volume, int channel = 0);
@@ -92,6 +95,7 @@ public:
     void reserveMemory(uint32_t numSamples, bool zeroInit = false);
     void resizeMemory(uint32_t numSamples, bool zeroInit = true);
     void reverse(int channel = 0);
+    void setAudio(std::vector<float>& audioData);
     void setLittleEndian(bool isLittleEndian);
     void swapChannels(int from = 0, int to = 1);
     void zeroInitHeader();

@@ -22,7 +22,7 @@
 }
 
 /**
- * @brief WaveManip
+ * @brief WaveManipp
  *
  * \ingroup wm
  */
