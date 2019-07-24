@@ -13,7 +13,7 @@ In order to use the library classes and methods in our code, we have to include 
 The easiest way to load an uncompressed audio file into memory is to do it from within the constructor by providing the path to the file (filename). All of the **WaveManipp** classes reside in the `wm` namespace.
 
 ```c++
-wm::Wave wav("D:/AudioSamples/test.wav");
+wm::Wave wave("D:/AudioSamples/test.wav");
 ```
 
 Alternatively, one can load a file by calling the empty constructor first and then using `open()`.
@@ -85,3 +85,10 @@ We can easily save the result by calling the `save()` method with a filename.
 ```c++
 wave.save("result.wav");
 ```
+
+More detailed information can be found at the links below.
+
+## Table of Contents:
+
+* [The `Wave` Class](docs/Wave.md)
+* [The `WaveBuilder` Class](docs/WaveBuilder.md)
