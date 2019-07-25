@@ -1,5 +1,0 @@
-# The `WaveBuilder` Class
-
-Even though internally **WaveManipp** uses the C functions `std::malloc`, `std::calloc`, and `std::realloc` for memory allocation and reallocation, it may still be suboptimal when merging a large number of `Wave` objects. The better solution is to use the `WaveBuilder` class, which stores pointers to the actual `Wave` objects. Nonetheless, when using this class, it is crucial that the consituent objects be not destroyed before creating the final `Wave` object using the `toWave()` method. When used properly, the `Wave` object is created only once, so there is no need for repeated memory reallocation.
-
-## [Back to Index](../README.md)

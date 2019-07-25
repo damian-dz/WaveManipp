@@ -86,9 +86,31 @@ We can easily save the result by calling the `save()` method with a filename.
 wave.save("result.wav");
 ```
 
-More detailed information can be found at the links below.
+More detailed information can be found below.
+
+* * *
 
 ## Table of Contents:
 
-* [The `Wave` Class](docs/Wave.md)
-* [The `WaveBuilder` Class](docs/WaveBuilder.md)
+* [The `Wave` Class](#the-wave-class)
+  * [Supported Formats](#supported-formats)
+* [The `WaveBuilder` Class](#the-wavebuilder-class)
+
+* * *
+
+## The `Wave` Class
+
+The `Wave` class represents an audio file stored in memory. All audio data within a `Wave` object is stored using single-precision floating-point values. While in many cases this means using more memory than necessary, it is much more convenient for effective audio data manipulation. Otherwise, every time we called a method to perform some operation on the data, each sample would have to be converted to a floating-point value first and then converted back to whatever its original format was.
+
+### Supported Formats
+
+So far, **WaveManipp** supports uncompressed RIFF/RIFX mono and stereo WAV files. The supported audio sample bit depths are 8, 16, 24, and 32. Support for more channels may be added in the future.
+
+### [Back to Table of Contents](#table-of-contents)
+
+* * *
+## The `WaveBuilder` Class
+
+Even though internally **WaveManipp** uses the C functions `std::malloc`, `std::calloc`, and `std::realloc` for memory allocation and reallocation, it may still be suboptimal when merging a large number of `Wave` objects. The better solution is to use the `WaveBuilder` class, which stores pointers to the actual `Wave` objects. Nonetheless, when using this class, it is crucial that the consituent objects be not destroyed before creating the final `Wave` object using the `toWave()` method. When used properly, the `Wave` object is created only once, so there is no need for repeated memory reallocation.
+
+### [Back to Table of Contents](#table-of-contents)

@@ -4,27 +4,27 @@ workspace "WaveManipp"
 
 project "WaveManipp"
     language "C++"
-	location "WaveManipp"
+    location "WaveManipp"
     kind "StaticLib"
-	targetdir "bin/%{cfg.buildcfg}"
-	files {
+    targetdir "bin/%{cfg.buildcfg}"
+    files {
         "src/**.h",
         "src/**.hpp",
         "src/**.cpp"
     }
-	
-	defines { }
+    
+    defines { }
 
-	filter "system:windows"       
-	    cppdialect "C++17"
-		defines {
-		    "_CRT_SECURE_NO_WARNINGS"
-		} 
-		staticruntime "On"
-		systemversion "latest"
+    filter "system:windows"       
+        cppdialect "C++17"
+        defines {
+            "_CRT_SECURE_NO_WARNINGS"
+        } 
+        staticruntime "On"
+        systemversion "latest"
 
     filter "configurations:Debug"
-	    defines { "DEBUG" }
+        defines { "DEBUG" }
         symbols "On"
 
     filter "configurations:Release"
