@@ -35,6 +35,11 @@ WaveBuilder::~WaveBuilder()
     m_wavPtrs.clear();
 } 
 
+/*!
+ * \brief Appends the Wave object to the current instance of WaveBuilder.
+ * \param wav &mdash; the Wave object to append
+ * \result A reference to itself.
+ */
 WaveBuilder& WaveBuilder::append(const Wave& wav)
 {
     if (wav.getSampleBitDepth() != m_bitsPerSample ||
