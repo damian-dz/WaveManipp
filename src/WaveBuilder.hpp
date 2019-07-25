@@ -20,12 +20,19 @@ class WaveBuilder
     uint32_t m_sampleRate;
 
 public:
+    WaveBuilder(uint16_t bitsPerSample, uint16_t numChannels, uint32_t sampleRate);
     WaveBuilder(const Wave& wav);
     WaveBuilder(const WaveBuilder& other);
     ~WaveBuilder();
 
     WaveBuilder& append(const Wave& wav);
+    uint16_t getBitsPerSample() const;
+    uint16_t getNumChannels() const;
+    uint32_t getSampleRate() const;
+    int getWaveCount() const;
     void insert(int idx, const Wave& wav);
+    bool isEmpty() const;
+    void reserve(uint32_t count);
 
     Wave toWave();
 };
