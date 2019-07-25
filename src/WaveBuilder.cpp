@@ -2,6 +2,14 @@
 
 namespace wm {
 
+WaveBuilder::WaveBuilder(uint16_t bitsPerSample, uint16_t numChannels, uint32_t sampleRate) :
+    m_bitsPerSample(bitsPerSample),
+    m_numChannels(numChannels),
+    m_sampleRate(sampleRate)
+{
+
+}
+
 WaveBuilder::WaveBuilder(const Wave& wav) :
     m_bitsPerSample(wav.getSampleBitDepth()),
     m_numChannels(wav.getNumChannels()),
@@ -19,9 +27,12 @@ WaveBuilder::WaveBuilder(const WaveBuilder& other) :
 
 }
 
+/*!
+ * \brief Destroys the WaveBuilder object and frees its associated resources.
+ */
 WaveBuilder::~WaveBuilder()
 {
-
+    m_wavPtrs.clear();
 } 
 
 WaveBuilder& WaveBuilder::append(const Wave& wav)
@@ -30,10 +41,30 @@ WaveBuilder& WaveBuilder::append(const Wave& wav)
         wav.getSampleRate() != m_sampleRate ||
         wav.getNumChannels() != m_numChannels) {
         throwError("Wave parameters mismatched.",
-                    "WaveBuilder::append(const Wave&)");
+                   "WaveBuilder::append(const Wave&)");
     }
     m_wavPtrs.push_back(&wav);
     return *this;
+}
+
+uint16_t WaveBuilder::getBitsPerSample() const
+{
+    return m_bitsPerSample;
+}
+
+uint16_t WaveBuilder::getNumChannels() const
+{
+    return m_numChannels;
+}
+
+uint32_t WaveBuilder::getSampleRate() const
+{
+    return m_sampleRate;
+}
+
+int WaveBuilder::getWaveCount() const
+{
+    return int(m_wavPtrs.size());
 }
 
 void WaveBuilder::insert(int idx, const Wave& wav)
@@ -47,6 +78,21 @@ void WaveBuilder::insert(int idx, const Wave& wav)
     m_wavPtrs.insert(m_wavPtrs.begin() + idx, &wav);
 }
 
+bool WaveBuilder::isEmpty() const
+{
+    return m_wavPtrs.empty();
+}
+
+void WaveBuilder::reserve(uint32_t count)
+{
+    m_wavPtrs.reserve(size_t(count));
+}
+
+/*!
+ * \brief Merges all of the Wave objects pointed to into a single Wave object.
+ * \details The objects pointed to must not be destroyed before calling this method.
+ * \result The merged Wave object.
+ */
 Wave WaveBuilder::toWave()
 {
     uint32_t totalNumSamples = 0;
