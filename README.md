@@ -95,6 +95,8 @@ More detailed information can be found below.
 * [The `Wave` Class](#the-wave-class)
   * [Supported Formats](#supported-formats)
 * [The `WaveBuilder` Class](#the-wavebuilder-class)
+* [The `WaveMixer` Class](#the-wavemixer-class)
+
 
 * * *
 
@@ -106,11 +108,30 @@ The `Wave` class represents an audio file stored in memory. All audio data withi
 
 So far, **WaveManipp** supports uncompressed RIFF/RIFX mono and stereo WAV files. The supported audio sample bit depths are 8, 16, 24, and 32. Support for more channels may be added in the future.
 
-### [Back to Table of Contents](#table-of-contents)
+#### [Back to Table of Contents](#table-of-contents)
 
 * * *
 ## The `WaveBuilder` Class
 
-Even though internally **WaveManipp** uses the C functions `std::malloc`, `std::calloc`, and `std::realloc` for memory allocation and reallocation, it may still be suboptimal when merging a large number of `Wave` objects. The better solution is to use the `WaveBuilder` class, which stores pointers to the actual `Wave` objects. Nonetheless, when using this class, it is crucial that the consituent objects be not destroyed before creating the final `Wave` object using the `toWave()` method. When used properly, the `Wave` object is created only once, so there is no need for repeated memory reallocation.
+Even though internally **WaveManipp** uses the C functions `std::malloc`, `std::calloc`, and `std::realloc` for memory allocation and reallocation, it may still be suboptimal when merging a large number of `Wave` objects. The better solution is to use the `WaveBuilder` class, which stores pointers to the actual `Wave` objects. When using this class, it is crucial to remember that the consituent objects be not destroyed before creating the final `Wave` object using the `toWave()` method. When used properly, the `Wave` object is created only once, so there is no need for repeated memory reallocation.
 
-### [Back to Table of Contents](#table-of-contents)
+#### [Back to Table of Contents](#table-of-contents)
+
+* * *
+## The `WaveMixer` Class
+
+This class emulates a "mixing board" by making it possible to combine different `Wave` objects in a non-sequential way. Just as the `WaveBuilder` class, it stores only pointers to existing `Wave` objects, so none of them should go out of scope (if created on the stack) or be explicitly destroyed (if created on the heap) before `toWave()` is called.
+
+Conceptually, a `WaveMixer` object is composed of *audio tracks*, wheareas tracks are made up of "audio chunks." They are actually `Wave` objects themselves, or rather pointers to the actual objects. The default empty constructor creates a `WaveMixer` object with no tracks. Therefore, in order to start adding audio chunks, we need to call the `addTrack()` method first:
+
+```c++
+wm::WaveMixer waveMixer;
+waveMixer.addTrack();
+```
+Now we can insert an audio chunk by providing the track index as well as a `Wave` object:
+
+```c++
+waveMixer.insertChunk(0, 10000, sineWave);
+```
+
+#### [Back to Table of Contents](#table-of-contents)

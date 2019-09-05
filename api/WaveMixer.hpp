@@ -9,7 +9,7 @@ namespace wm {
 /*!
  * \brief A class that makes it possibe to mix multiple audio tracks.
  */
-class WaveMixer
+class WAVEMANIPPAPI WaveMixer
 {
     struct Chunk
     {

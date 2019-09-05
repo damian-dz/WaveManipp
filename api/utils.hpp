@@ -3,6 +3,12 @@
 #ifndef UTILS_H
 #define UTILS_H
 
+#ifdef WAVEMANIPP_DLL
+#define WAVEMANIPPAPI __declspec(dllexport)
+#else
+#define WAVEMANIPPAPI
+#endif // WAVEMANIPP_DLL
+
 #include <algorithm>
 #include <iostream>
 #include <random>

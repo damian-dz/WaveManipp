@@ -9,7 +9,7 @@ namespace wm {
 /*!
  * \brief A class that represents an audio file in memory.
  */
-class Wave
+class WAVEMANIPPAPI Wave
 {
     static_assert(std::numeric_limits<float>::is_iec559, "float must be IEEE 754");
     static_assert(sizeof(float) == sizeof(uint32_t), "float must be 32 bits wide");

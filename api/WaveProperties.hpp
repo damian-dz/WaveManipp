@@ -12,7 +12,7 @@ namespace wm {
             so setting one of the parameters will not affect any other.
             The class stores no information about endianness.
  */
-class WaveProperties
+class WAVEMANIPPAPI WaveProperties
 {
     uint32_t m_riffChunkSize;
     uint32_t m_fmtChunkSize;
