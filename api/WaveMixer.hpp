@@ -20,9 +20,8 @@ class WAVEMANIPPAPI WaveMixer
 
     struct Track
     {
-        void addChunk(uint32_t startOffset, uint32_t endOffset, const Wave* data);
         void addChunk(uint32_t startOffset, const Wave& wav);
-        Chunk getChunk(int idx) const;      
+        Chunk getChunk(int idx) const;
         Chunk getLastChunk() const;
         uint32_t getMaxEndOffset() const;
         uint32_t getMinStartOffset() const;
@@ -38,7 +37,6 @@ class WAVEMANIPPAPI WaveMixer
     uint16_t m_bitsPerSample;
     uint16_t m_numChannels;
     uint32_t m_sampleRate;
-
     std::vector<Track> m_tracks;
 
 public:
@@ -49,7 +47,9 @@ public:
     void addTrack();
     uint32_t getNumFrames() const;
     int getNumTracks() const;
-    void insertWave(int trackIdx, uint32_t offset, const Wave& wav);
+    float getTrackVolume(int trackIdx) const;
+    void insertChunk(int trackIdx, uint32_t offset, const Wave& wav);
+    void removeTrack(int trackIdx);
     void setTrackVolume(int trackIdx, float volume);
     Wave toWave();
 };

@@ -2,7 +2,9 @@
 
 
 namespace wm {
-
+/*!
+ * \brief Constructs an empty WaveMixer object with a bit depth of 16, one channel, and a sample rate of 44100 Hz.
+ */
 WaveMixer::WaveMixer() :
     m_bitsPerSample(16),
     m_numChannels(1),
@@ -10,6 +12,10 @@ WaveMixer::WaveMixer() :
 {
 }
 
+/*!
+ * \brief Constructs a WaveMixer object with the parameters of the provided Wave object
+          and sets it as the first chunk on the first track.
+ */
 WaveMixer::WaveMixer(const Wave& wav) :
     m_bitsPerSample(wav.getSampleBitDepth()),
     m_numChannels(wav.getNumChannels()),
@@ -46,9 +52,19 @@ int WaveMixer::getNumTracks() const
     return int(m_tracks.size());
 }
 
-void WaveMixer::insertWave(int trackIdx, uint32_t offset, const Wave& wav)
+float WaveMixer::getTrackVolume(int trackIdx) const
+{
+    return m_tracks[trackIdx].getTrackVolume();
+}
+
+void WaveMixer::insertChunk(int trackIdx, uint32_t offset, const Wave& wav)
 {
     m_tracks[trackIdx].addChunk(offset, wav);
+}
+
+void WaveMixer::removeTrack(int trackIdx)
+{
+    m_tracks.erase(m_tracks.begin() + trackIdx);
 }
 
 void WaveMixer::setTrackVolume(int trackIdx, float volume)
@@ -56,6 +72,13 @@ void WaveMixer::setTrackVolume(int trackIdx, float volume)
     m_tracks[trackIdx].setTrackVolume(volume);
 }
 
+/*!
+ * \brief Merges all of the Wave objects pointed to into a single Wave object.
+ * \details The objects pointed to must not be destroyed or modified before calling this method.
+            If there are overlapping chunks within a track,
+            the overlap will be overwritten by the one with the larger index.
+ * \result The merged Wave object.
+ */
 Wave WaveMixer::toWave()
 {
     uint32_t numFrames = getNumFrames();
@@ -75,11 +98,11 @@ Wave WaveMixer::toWave()
             const float* chunkData = chunk.data->constAudioData();
             uint32_t jStart = chunk.startOffset * m_numChannels;
             uint32_t jEnd = chunk.endOffset * m_numChannels;
-            for (int j = jStart; j < jEnd; ++j) {
+            for (uint32_t j = jStart; j < jEnd; ++j) {
                 trackData[j - jStart] = chunkData[j - jStart] * trackVolume;
             }
         }
-        for (int i = 0; i < numTrackSamples; ++i) {
+        for (uint32_t i = 0; i < numTrackSamples; ++i) {
             data[i + tStart] += trackData[i];
         }
         std::free(trackData);
@@ -87,18 +110,13 @@ Wave WaveMixer::toWave()
     return result;
 }
 
-void WaveMixer::Track::addChunk(uint32_t startOffset, uint32_t endOffset, const Wave* wavData)
+void WaveMixer::Track::addChunk(uint32_t startOffset, const Wave& wav)
 {
     Chunk chunk;
     chunk.startOffset = startOffset;
-    chunk.endOffset = endOffset;
-    chunk.data = wavData;
+    chunk.endOffset = startOffset + wav.getNumFrames();
+    chunk.data = &wav;
     m_chunks.push_back(chunk);
-}
-
-void WaveMixer::Track::addChunk(uint32_t startOffset, const Wave& wav)
-{
-    addChunk(startOffset, startOffset + wav.getNumFrames(), &wav);
 }
 
 WaveMixer::Chunk WaveMixer::Track::getChunk(int idx) const

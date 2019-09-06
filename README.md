@@ -2,6 +2,27 @@
 
 **WaveManipp** is intended to be a C++ library for efficient uncompressed audio data manipulation. At this point, it supports WAV files only up to two channels. It does not support audio recording or playback on its own, and there are no plans to implement that. However, in the future, some functionalities should be incorporated into it to facilitate the cooperation with third-party playback/recording libraries.
 
+## Table of Contents:
+
+* [Compiling from Source](#compiling-from-source)
+* [Introduction](#introduction)
+* [The `Wave` Class](#the-wave-class)
+  * [Supported Formats](#supported-formats)
+* [The `WaveBuilder` Class](#the-wavebuilder-class)
+* [The `WaveMixer` Class](#the-wavemixer-class)
+
+## Compiling from Source
+
+Probably the easiest way to compile WaveManipp from source on Windows is by using [premake5](https://github.com/premake/premake-core) in tandem with Microsoft Visual Studio. Assuming that the premake5 path is in your environment variables and you are inside the folder where premake5.lua resides, you can type in Command Prompt:
+
+```
+premake5 vs2019
+```
+
+This should generate a solution and a project, both of which will be called WaveManipp. You should see eight configurations available -- DynDebug, DynRelease, StaDebug, StaRelease -- for both the Win32 and x64 platforms. The Dyn- prefix stands for dynamic, and the Sta- prefix stands for static. If you want to build all of the configurations/platforms at once, go to Build -> Batch Build -> Select All, and then Build.
+
+Building from source has been tested with the MSVC compiler, version 19.22.27905, as well as the GCC g++, version 5.1.0 (using the options `-pedantic-errors -std=c++17 -Wall`).
+
 ## Introduction
 
 In order to use the library classes and methods in our code, we have to include the necessary headers. This can be done by including the `WaveManipp.h` header file somewhere at the top of the header/source file.
@@ -85,21 +106,9 @@ We can easily save the result by calling the `save()` method with a filename.
 ```c++
 wave.save("result.wav");
 ```
-
-More detailed information can be found below.
-
-* * *
-
-## Table of Contents:
-
-* [The `Wave` Class](#the-wave-class)
-  * [Supported Formats](#supported-formats)
-* [The `WaveBuilder` Class](#the-wavebuilder-class)
-* [The `WaveMixer` Class](#the-wavemixer-class)
-
+#### [Back to Table of Contents](#table-of-contents)
 
 * * *
-
 ## The `Wave` Class
 
 The `Wave` class represents an audio file stored in memory. All audio data within a `Wave` object is stored using single-precision floating-point values. While in many cases this means using more memory than necessary, it is much more convenient for effective audio data manipulation. Otherwise, every time we called a method to perform some operation on the data, each sample would have to be converted to a floating-point value first and then converted back to whatever its original format was.
