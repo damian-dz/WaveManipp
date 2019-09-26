@@ -15,7 +15,7 @@ class WAVEMANIPPAPI WaveMixer
     {
         uint32_t startOffset = 0;
         uint32_t endOffset = 0;
-        const Wave* data = nullptr;
+        const Wave* wave = nullptr;
     };
 
     struct Track

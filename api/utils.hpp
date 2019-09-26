@@ -20,6 +20,9 @@
 #include <cmath>
 #endif
 
+#define PRINT(var) (std::cout << var << std::endl);
+#define PRINTN(var) (std::cout << #var << ": " << var << std::endl);
+
 [[noreturn]] inline void throwError(const std::string& errorMsg, const std::string& funcName = "")
 {
     std::string prefix = funcName != "" ? funcName + ": " : "";

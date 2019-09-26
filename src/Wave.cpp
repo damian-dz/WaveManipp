@@ -722,6 +722,34 @@ void Wave::swapChannels(int from, int to)
     }
 }
 
+/*!
+ * \brief Turns the mono track into a stereo one.
+ */
+void Wave::upmixToStereo()
+{
+    uint32_t numSamples = getNumSamples();
+    uint16_t numChannels = 2;
+    uint32_t newDataChunkSize = m_waveProperties.getDataChunkSize() * numChannels;
+    uint32_t newNumSamples = m_numSamples * numChannels;
+    std::cout << newNumSamples << std::endl;
+    float* pNewData = reinterpret_cast<float*>(std::malloc(newNumSamples * sizeof(pNewData)));
+    if (pNewData != nullptr) {
+        for (uint32_t y = 0; y < numSamples; ++y) {
+            for (uint16_t x = 0; x < numChannels; ++x) {
+                pNewData[y * numChannels + x] = m_pData[y];
+            }
+        }
+        std::free(m_pData);
+        m_pData = pNewData;
+        m_waveProperties.setBlockAlign(m_waveProperties.getBlockAlign() * numChannels);
+        m_waveProperties.setNumBytesPerSecond(m_waveProperties.getNumBytesPerSecond() * numChannels);
+        m_waveProperties.setRiffChunkSize(newDataChunkSize + 36);
+        m_waveProperties.setDataChunkSize(newDataChunkSize);
+        m_waveProperties.setNumChannels(numChannels);
+        m_numSamples = newNumSamples;
+    }
+}
+
 void Wave::zeroInitHeader()
 {
     std::memset(&m_header, 0, sizeof(Header));

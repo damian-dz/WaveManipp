@@ -98,8 +98,8 @@ Wave WaveMixer::toWave()
 {
     uint32_t numFrames = getNumFrames();
     Wave result(numFrames, m_numChannels, m_bitsPerSample, m_sampleRate);
-    float* data = result.audioData();
-    std::memset(data, 0, numFrames * uint64_t(m_numChannels) * sizeof(float));
+    float* wave = result.audioData();
+    std::memset(wave, 0, numFrames * uint64_t(m_numChannels) * sizeof(float));
     for (const Track& track : m_tracks) {
         uint32_t tStart = track.getMinStartOffset();
         uint32_t tEnd = track.getMaxEndOffset();
@@ -110,7 +110,7 @@ Wave WaveMixer::toWave()
         float trackVolume = track.getTrackVolume();
         for (int i = 0; i < track.getNumChunks(); ++i) {
             Chunk chunk = track.getChunk(i);
-            const float* chunkData = chunk.data->constAudioData();
+            const float* chunkData = chunk.wave->constAudioData();
             uint32_t jStart = chunk.startOffset * m_numChannels;
             uint32_t jEnd = chunk.endOffset * m_numChannels;
             for (uint32_t j = jStart; j < jEnd; ++j) {
@@ -118,7 +118,7 @@ Wave WaveMixer::toWave()
             }
         }
         for (uint32_t i = 0; i < numTrackSamples; ++i) {
-            data[i + tStart] += trackData[i];
+            wave[i + tStart] += trackData[i];
         }
         std::free(trackData);
     }
@@ -130,7 +130,7 @@ void WaveMixer::Track::addChunk(uint32_t startOffset, const Wave& wav)
     Chunk chunk;
     chunk.startOffset = startOffset;
     chunk.endOffset = startOffset + wav.getNumFrames();
-    chunk.data = &wav;
+    chunk.wave = &wav;
     m_chunks.push_back(chunk);
 }
 

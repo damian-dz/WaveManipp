@@ -101,6 +101,7 @@ public:
     void setAudio(std::vector<float>& audio);
     void setLittleEndian(bool isLittleEndian);
     void swapChannels(int from = 0, int to = 1);
+    void upmixToStereo();
     void zeroInitHeader();
 
     void saveAs(const char* filename, uint32_t bufferSize = 24576);
