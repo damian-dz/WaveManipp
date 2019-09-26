@@ -30,11 +30,26 @@ WaveMixer::~WaveMixer()
 {
 }
 
+/*!
+ * \brief Adds an empty track to the mix.
+ */
 void WaveMixer::addTrack()
 {
     m_tracks.push_back(Track());
 }
 
+void WaveMixer::addTrack(uint32_t offset, const Wave& wav)
+{
+    Track track;
+    track.addChunk(offset, wav);
+    m_tracks.push_back(track);
+}
+
+/*!
+ * \brief Returns the number of frames from the leftmost frame of the first chunk
+          to the rightmost frame of the last chunk.
+ * \result The number of frames.
+ */
 uint32_t WaveMixer::getNumFrames() const
 {
     uint32_t max = 0;

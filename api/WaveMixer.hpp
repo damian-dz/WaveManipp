@@ -45,6 +45,7 @@ public:
     ~WaveMixer();
 
     void addTrack();
+    void addTrack(uint32_t offset, const Wave& wav);
     uint32_t getNumFrames() const;
     int getNumTracks() const;
     float getTrackVolume(int trackIdx) const;
