@@ -418,12 +418,64 @@ float* Wave::audioData() const
 std::vector<float> Wave::getBuffer(uint32_t offset, uint32_t sampleCount, int channel) const
 {
     std::vector<float> buffer(sampleCount);
-    uint16_t numChannels = int(m_waveProperties.getNumChannels());
+    uint16_t numChannels = m_waveProperties.getNumChannels();
     uint32_t absoluteOffset = numChannels * offset;
     for (uint32_t i = channel; i < sampleCount * numChannels; i += numChannels) {
         buffer[i / numChannels] = m_pData[absoluteOffset + i];
     }
     return buffer;
+}
+
+/*!
+ * \brief Fetches a squeezed buffer from the Wave object as a vector of floating-point values.
+ * \param offset &mdash; the sample offset for the specified channel
+ * \param squeezedSampleCount &mdash; the number of samples after squeezing
+ * \param squeezeFactor &mdash; the ratio between the original sample count and the squeezed sample count
+ * \param channel &mdash; the index of the channel
+ * \result An std::vector of floating-point values.
+ */
+std::vector<float> Wave::getSqueezedBuffer(uint32_t offset, uint32_t squeezedSampleCount, float squeezeFactor,
+                                           int channel) const
+{
+    std::vector<float> squeezedBuffer(squeezedSampleCount);
+    uint32_t sampleCount = uint32_t(roundf(squeezedSampleCount * squeezeFactor));
+    uint16_t numChannels = m_waveProperties.getNumChannels();
+    uint32_t absoluteOffset = numChannels * offset;
+    for (uint32_t i = 0; i < squeezedSampleCount; ++i) {
+        uint32_t current = uint32_t(roundf(i * squeezeFactor)) * numChannels;
+        uint32_t next = uint32_t(roundf((i + 1) * squeezeFactor)) * numChannels;
+        float sum = 0.f;
+        for (uint32_t j = current; j < next; j += numChannels) {
+            sum += m_pData[absoluteOffset + j];
+        }
+        squeezedBuffer[i] = sum * numChannels / (next - current);
+    }
+    return squeezedBuffer;
+}
+
+/*!
+ * \brief Fetches a stretched buffer from the Wave object as a vector of floating-point values.
+ * \param offset &mdash; the sample offset for the specified channel
+ * \param squeezedSampleCount &mdash; the number of samples after stretching
+ * \param squeezeFactor &mdash; the ratio between the stretched sample count and the original sample count 
+ * \param channel &mdash; the index of the channel
+ * \result An std::vector of floating-point values.
+ */
+std::vector<float> Wave::getStretchedBuffer(uint32_t offset, uint32_t stretchedSampleCount, float stretchFactor,
+                                            int channel) const
+{
+    std::vector<float> stretchedBuffer(stretchedSampleCount);
+    uint32_t sampleCount = uint32_t(std::roundf(stretchedSampleCount / stretchFactor));
+    uint16_t numChannels = m_waveProperties.getNumChannels();
+    uint32_t absoluteOffset = numChannels * offset;
+    for (uint32_t i = channel; i < sampleCount * numChannels; i += numChannels) {
+        uint32_t current = uint32_t(roundf((i - channel) / numChannels * stretchFactor));
+        uint32_t next = uint32_t(roundf((i - channel + numChannels) / numChannels * stretchFactor));
+        for (uint32_t j = current; j < next; ++j) {
+            stretchedBuffer[j] = m_pData[absoluteOffset + i];
+        }
+    }
+    return stretchedBuffer;
 }
 
 void Wave::insertAudio(uint32_t offset, const float* audio, uint32_t numSamples)

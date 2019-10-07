@@ -87,6 +87,10 @@ public:
     static Wave generateTriangle(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
     std::vector<float> getAveragedOutData(uint32_t binSize, bool absolute = false, int channel = 0) const;
     std::vector<float> getBuffer(uint32_t offset, uint32_t sampleCount, int channel = 0) const;
+    std::vector<float> getSqueezedBuffer(uint32_t offset, uint32_t squeezedSampleCount, float squeezeFactor,
+                                         int channel = 0) const;
+    std::vector<float> getStretchedBuffer(uint32_t offset, uint32_t stretchedSampleCount, float stretchFactor,
+                                          int channel = 0) const;
     void insertAudio(uint32_t offset, const float* audio, uint32_t numSamples);
     void insertAudio(uint32_t offset, std::vector<float>& audio);
     bool isEmpty() const;
