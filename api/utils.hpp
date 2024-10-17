@@ -9,6 +9,8 @@
 #define WAVEMANIPPAPI
 #endif // WAVEMANIPP_DLL
 
+#include <omp.h>
+
 #include <algorithm>
 #include <iostream>
 #include <random>

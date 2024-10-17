@@ -435,18 +435,25 @@ std::vector<float> Wave::getBuffer(uint32_t offset, uint32_t sampleCount, int ch
  * \result An std::vector of floating-point values.
  */
 std::vector<float> Wave::getSqueezedBuffer(uint32_t offset, uint32_t squeezedSampleCount, float squeezeFactor,
-                                           int channel) const
+                                           bool absolute, int channel, bool multiThreaded) const
 {
     std::vector<float> squeezedBuffer(squeezedSampleCount);
     uint32_t sampleCount = uint32_t(roundf(squeezedSampleCount * squeezeFactor));
     uint16_t numChannels = m_waveProperties.getNumChannels();
     uint32_t absoluteOffset = numChannels * offset;
+#pragma omp parallel for if (multiThreaded)
     for (uint32_t i = 0; i < squeezedSampleCount; ++i) {
         uint32_t current = uint32_t(roundf(i * squeezeFactor)) * numChannels;
         uint32_t next = uint32_t(roundf((i + 1) * squeezeFactor)) * numChannels;
         float sum = 0.f;
-        for (uint32_t j = current; j < next; j += numChannels) {
-            sum += m_pData[absoluteOffset + j];
+        if (!absolute) {
+            for (uint32_t j = current; j < next; j += numChannels) {
+                sum += m_pData[absoluteOffset + j];
+            }
+        } else {
+            for (uint32_t j = current; j < next; j += numChannels) {
+                sum += fabs(m_pData[absoluteOffset + j]);
+            }
         }
         squeezedBuffer[i] = sum * numChannels / (next - current);
     }
@@ -465,14 +472,16 @@ std::vector<float> Wave::getStretchedBuffer(uint32_t offset, uint32_t stretchedS
                                             int channel) const
 {
     std::vector<float> stretchedBuffer(stretchedSampleCount);
-    uint32_t sampleCount = uint32_t(std::roundf(stretchedSampleCount / stretchFactor));
+    uint32_t sampleCount = uint32_t(roundf(stretchedSampleCount / stretchFactor));
     uint16_t numChannels = m_waveProperties.getNumChannels();
     uint32_t absoluteOffset = numChannels * offset;
     for (uint32_t i = channel; i < sampleCount * numChannels; i += numChannels) {
-        uint32_t current = uint32_t(roundf((i - channel) / numChannels * stretchFactor));
-        uint32_t next = uint32_t(roundf((i - channel + numChannels) / numChannels * stretchFactor));
+        uint32_t current = uint32_t(roundf(i / numChannels * stretchFactor));
+        uint32_t next = uint32_t(roundf((i + numChannels) / numChannels * stretchFactor));
         for (uint32_t j = current; j < next; ++j) {
-            stretchedBuffer[j] = m_pData[absoluteOffset + i];
+            if (j < stretchedSampleCount) { // maybe can be improved
+                stretchedBuffer[j] = m_pData[absoluteOffset + i + channel];
+            }
         }
     }
     return stretchedBuffer;
@@ -595,12 +604,14 @@ Wave Wave::generateRandom(uint32_t samplingFreq, uint32_t numFrames)
  * \param numFrames &mdash; the number of audio frames to generate
  * \result The generated sine wave.
  */
-Wave Wave::generateSine(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
+Wave Wave::generateSine(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames,
+                        bool multiThreaded)
 {
     Wave result(numFrames, 1, 16, samplingFreq);
     constexpr float coeff = 1.f - std::numeric_limits<float>::epsilon();
     float timeStep = 1.f / samplingFreq;
     float omega = 2 * 3.1415927f * waveFreq;
+    #pragma omp parallel for if(multiThreaded)
     for (uint32_t i = 0; i < numFrames; ++i) {
         result.m_pData[i] = coeff * sinf(omega * (i * timeStep + phaseShift));
     }
@@ -615,12 +626,14 @@ Wave Wave::generateSine(float waveFreq, float phaseShift, uint32_t samplingFreq,
  * \param numFrames &mdash; the number of audio frames to generate
  * \result The generated square wave.
  */
-Wave Wave::generateSquare(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
+Wave Wave::generateSquare(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames,
+                          bool multiThreaded)
 {
     Wave result(numFrames, 1, 16, samplingFreq);
     float timeStep = 1.f / samplingFreq;
     float omega = 2 * 3.1415927f * waveFreq;
     constexpr float coeff = 1.f - std::numeric_limits<float>::epsilon();
+    #pragma omp parallel for if(multiThreaded)
     for (uint32_t i = 0; i < numFrames; ++i) {
         result.m_pData[i] = sinf(omega * (i * timeStep + phaseShift)) < 0 ? -1.f * coeff : 1.f * coeff;
     }
@@ -635,13 +648,15 @@ Wave Wave::generateSquare(float waveFreq, float phaseShift, uint32_t samplingFre
  * \param numFrames &mdash; the number of audio frames to generate
  * \result The generated triangle wave.
  */
-Wave Wave::generateTriangle(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
+Wave Wave::generateTriangle(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames,
+                            bool multiThreaded)
 {
     Wave result(numFrames, 1, 16, samplingFreq);
     float timeStep = 1.f / samplingFreq;
     constexpr float pi = 3.1415927f;
     constexpr float coeff = 2 * (1.f - std::numeric_limits<float>::epsilon()) / pi;
     float omega = 2 * pi * waveFreq;
+    #pragma omp parallel for if(multiThreaded)
     for (uint32_t i = 0; i < numFrames; ++i) {
         result.m_pData[i] = coeff * asinf(sinf(omega * (i * timeStep + phaseShift)));
     }

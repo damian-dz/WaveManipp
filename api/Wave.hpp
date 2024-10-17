@@ -82,13 +82,16 @@ public:
     void changeVolume(float volume, int channel = 0);
     void downmixToMono();
     static Wave generateRandom(uint32_t samplingFreq, uint32_t numFrames);
-    static Wave generateSine(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
-    static Wave generateSquare(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
-    static Wave generateTriangle(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames);
+    static Wave generateSine(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames,
+                             bool multiThreaded = false);
+    static Wave generateSquare(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames,
+                               bool multiThreaded = false);
+    static Wave generateTriangle(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames,
+                                 bool multiThreaded = false);
     std::vector<float> getAveragedOutData(uint32_t binSize, bool absolute = false, int channel = 0) const;
     std::vector<float> getBuffer(uint32_t offset, uint32_t sampleCount, int channel = 0) const;
     std::vector<float> getSqueezedBuffer(uint32_t offset, uint32_t squeezedSampleCount, float squeezeFactor,
-                                         int channel = 0) const;
+                                         bool absolute = false, int channel = 0, bool multiThreaded = false) const;
     std::vector<float> getStretchedBuffer(uint32_t offset, uint32_t stretchedSampleCount, float stretchFactor,
                                           int channel = 0) const;
     void insertAudio(uint32_t offset, const float* audio, uint32_t numSamples);
