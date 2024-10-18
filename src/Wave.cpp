@@ -168,7 +168,7 @@ void Wave::setWaveProperties(bool onlyDataChunk)
 }
 
 /*!
- * \brief Reserves enough memory to store the specified number of samples using floating-point format.
+ * \brief Reserves enough memory to store the specigfied number of samples using floating-point format.
  * \param numSamples &mdash; the number of samples
  * \param zeroInit &mdash; specifies if memory should be set to zero
  */
@@ -418,12 +418,88 @@ float* Wave::audioData() const
 std::vector<float> Wave::getBuffer(uint32_t offset, uint32_t sampleCount, int channel) const
 {
     std::vector<float> buffer(sampleCount);
-    uint16_t numChannels = int(m_waveProperties.getNumChannels());
+    uint16_t numChannels = m_waveProperties.getNumChannels();
     uint32_t absoluteOffset = numChannels * offset;
     for (uint32_t i = channel; i < sampleCount * numChannels; i += numChannels) {
         buffer[i / numChannels] = m_pData[absoluteOffset + i];
     }
     return buffer;
+}
+
+/*!
+ * \brief Fetches a squeezed buffer from the Wave object as a vector of floating-point values.
+ * \param offset &mdash; the sample offset for the specified channel
+ * \param squeezedSampleCount &mdash; the number of samples after squeezing
+ * \param squeezeFactor &mdash; the ratio between the original sample count and the squeezed sample count
+ * \param channel &mdash; the index of the channel
+ * \result An std::vector of floating-point values.
+ */
+std::vector<float> Wave::getSqueezedBuffer(uint32_t offset, uint32_t squeezedSampleCount, float squeezeFactor,
+                                           bool absolute, int channel, bool multiThreaded) const
+{
+    std::vector<float> squeezedBuffer(squeezedSampleCount);
+    uint32_t sampleCount = uint32_t(roundf(squeezedSampleCount * squeezeFactor));
+    uint16_t numChannels = m_waveProperties.getNumChannels();
+    uint32_t absoluteOffset = numChannels * offset;
+    #pragma omp parallel for if (multiThreaded)
+    for (int32_t i = 0; i < squeezedSampleCount; ++i) {
+        uint32_t current = uint32_t(roundf(i * squeezeFactor)) * numChannels;
+        uint32_t next = uint32_t(roundf((i + 1) * squeezeFactor)) * numChannels;
+        float sum = 0.f;
+        if (!absolute) {
+            for (int32_t j = current; j < next; j += numChannels) {
+                sum += m_pData[absoluteOffset + j];
+            }
+        } else {
+            for (int32_t j = current; j < next; j += numChannels) {
+                sum += fabs(m_pData[absoluteOffset + j]);
+            }
+        }
+        squeezedBuffer[i] = sum * numChannels / (next - current);
+    }
+    return squeezedBuffer;
+}
+
+/*!
+ * \brief Fetches a stretched buffer from the Wave object as a vector of floating-point values.
+ * \param offset &mdash; the sample offset for the specified channel
+ * \param squeezedSampleCount &mdash; the number of samples after stretching
+ * \param squeezeFactor &mdash; the ratio between the stretched sample count and the original sample count 
+ * \param channel &mdash; the index of the channel
+ * \result An std::vector of floating-point values.
+ */
+std::vector<float> Wave::getStretchedBuffer(uint32_t offset, uint32_t stretchedSampleCount, float stretchFactor,
+                                            int channel) const
+{
+    std::vector<float> stretchedBuffer(stretchedSampleCount);
+    uint32_t sampleCount = uint32_t(roundf(stretchedSampleCount / stretchFactor));
+    uint16_t numChannels = m_waveProperties.getNumChannels();
+    uint32_t absoluteOffset = numChannels * offset;
+    for (uint32_t i = channel; i < sampleCount * numChannels; i += numChannels) {
+        uint32_t current = uint32_t(roundf(i / numChannels * stretchFactor));
+        uint32_t next = uint32_t(roundf((i + numChannels) / numChannels * stretchFactor));
+        for (uint32_t j = current; j < next; ++j) {
+            if (j < stretchedSampleCount) { // maybe can be improved
+                stretchedBuffer[j] = m_pData[absoluteOffset + i + channel];
+            }
+        }
+    }
+    return stretchedBuffer;
+}
+
+float Wave::getAbsPeak(int channel) const
+{
+    if (getNumFrames() > 1) {
+        uint16_t numChannels = m_waveProperties.getNumChannels();
+        float max = m_pData[channel];
+        for (uint32_t i = channel + numChannels; i < m_numSamples; i += numChannels) {
+            if (fabs(m_pData[i]) > max) {
+                max = fabs(m_pData[i]);
+            }
+        }
+        return max;
+    }
+    return 0.f;
 }
 
 void Wave::insertAudio(uint32_t offset, const float* audio, uint32_t numSamples)
@@ -480,17 +556,10 @@ float Wave::avgValue(int channel) const
 void Wave::changeVolume(float volume, int channel)
 {
     uint16_t numChannels = m_waveProperties.getNumChannels();
-    if (getNumFrames() > 1) {
-        float max = m_pData[channel];
-        for (uint32_t i = channel + numChannels; i < m_numSamples; i += numChannels) {
-            if (fabs(m_pData[i]) > max) {
-                max = fabs(m_pData[i]);
-            }
-        }
-        float factor = volume / max;
-        for (uint32_t i = channel; i < m_numSamples; i += numChannels) {
-            m_pData[i] *= factor;
-        }
+    float max = getAbsPeak(channel);
+    float factor = volume / max;
+    for (uint32_t i = channel; i < m_numSamples; i += numChannels) {
+        m_pData[i] *= factor;
     }
 }
 
@@ -523,9 +592,14 @@ void Wave::downmixToMono()
     }
 }
 
-Wave Wave::generateRandom(uint32_t samplingFreq, uint32_t numFrames)
+Wave Wave::randomFromDuration(float duration, uint16_t bitDepth, uint32_t sampleRate)
 {
-    Wave result(numFrames, 1, 16, samplingFreq);
+    return generateRandom(uint32_t(roundf(sampleRate * duration)), bitDepth, sampleRate);
+}
+
+Wave Wave::generateRandom(uint32_t numFrames, uint16_t bitDepth, uint32_t sampleRate)
+{
+    Wave result(numFrames, 1, bitDepth, sampleRate);
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<float> dis(-1.f, 1.f - std::numeric_limits<float>::epsilon());
@@ -543,13 +617,15 @@ Wave Wave::generateRandom(uint32_t samplingFreq, uint32_t numFrames)
  * \param numFrames &mdash; the number of audio frames to generate
  * \result The generated sine wave.
  */
-Wave Wave::generateSine(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
+Wave Wave::generateSine(float waveFreq, float phaseShift,  uint32_t numFrames,
+    uint16_t bitDepth, uint32_t sampleRate, bool multiThreaded)
 {
-    Wave result(numFrames, 1, 16, samplingFreq);
+    Wave result(numFrames, 1, bitDepth, sampleRate);
     constexpr float coeff = 1.f - std::numeric_limits<float>::epsilon();
-    float timeStep = 1.f / samplingFreq;
+    float timeStep = 1.f / sampleRate;
     float omega = 2 * 3.1415927f * waveFreq;
-    for (uint32_t i = 0; i < numFrames; ++i) {
+    #pragma omp parallel for if(multiThreaded)
+    for (int32_t i = 0; i < numFrames; ++i) {
         result.m_pData[i] = coeff * sinf(omega * (i * timeStep + phaseShift));
     }
     return result;
@@ -563,13 +639,15 @@ Wave Wave::generateSine(float waveFreq, float phaseShift, uint32_t samplingFreq,
  * \param numFrames &mdash; the number of audio frames to generate
  * \result The generated square wave.
  */
-Wave Wave::generateSquare(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
+Wave Wave::generateSquare(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames,
+                          bool multiThreaded)
 {
     Wave result(numFrames, 1, 16, samplingFreq);
     float timeStep = 1.f / samplingFreq;
     float omega = 2 * 3.1415927f * waveFreq;
     constexpr float coeff = 1.f - std::numeric_limits<float>::epsilon();
-    for (uint32_t i = 0; i < numFrames; ++i) {
+    #pragma omp parallel for if(multiThreaded)
+    for (int32_t i = 0; i < numFrames; ++i) {
         result.m_pData[i] = sinf(omega * (i * timeStep + phaseShift)) < 0 ? -1.f * coeff : 1.f * coeff;
     }
     return result;
@@ -583,14 +661,16 @@ Wave Wave::generateSquare(float waveFreq, float phaseShift, uint32_t samplingFre
  * \param numFrames &mdash; the number of audio frames to generate
  * \result The generated triangle wave.
  */
-Wave Wave::generateTriangle(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames)
+Wave Wave::generateTriangle(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames,
+                            bool multiThreaded)
 {
     Wave result(numFrames, 1, 16, samplingFreq);
     float timeStep = 1.f / samplingFreq;
     constexpr float pi = 3.1415927f;
     constexpr float coeff = 2 * (1.f - std::numeric_limits<float>::epsilon()) / pi;
     float omega = 2 * pi * waveFreq;
-    for (uint32_t i = 0; i < numFrames; ++i) {
+    #pragma omp parallel for if(multiThreaded)
+    for (int32_t i = 0; i < numFrames; ++i) {
         result.m_pData[i] = coeff * asinf(sinf(omega * (i * timeStep + phaseShift)));
     }
     return result;
@@ -722,6 +802,34 @@ void Wave::swapChannels(int from, int to)
     }
 }
 
+/*!
+ * \brief Turns the mono track into a stereo one.
+ */
+void Wave::upmixToStereo()
+{
+    uint32_t numSamples = getNumSamples();
+    uint16_t numChannels = 2;
+    uint32_t newDataChunkSize = m_waveProperties.getDataChunkSize() * numChannels;
+    uint32_t newNumSamples = m_numSamples * numChannels;
+    std::cout << newNumSamples << std::endl;
+    float* pNewData = reinterpret_cast<float*>(std::malloc(newNumSamples * sizeof(pNewData)));
+    if (pNewData != nullptr) {
+        for (uint32_t y = 0; y < numSamples; ++y) {
+            for (uint16_t x = 0; x < numChannels; ++x) {
+                pNewData[y * numChannels + x] = m_pData[y];
+            }
+        }
+        std::free(m_pData);
+        m_pData = pNewData;
+        m_waveProperties.setBlockAlign(m_waveProperties.getBlockAlign() * numChannels);
+        m_waveProperties.setNumBytesPerSecond(m_waveProperties.getNumBytesPerSecond() * numChannels);
+        m_waveProperties.setRiffChunkSize(newDataChunkSize + 36);
+        m_waveProperties.setDataChunkSize(newDataChunkSize);
+        m_waveProperties.setNumChannels(numChannels);
+        m_numSamples = newNumSamples;
+    }
+}
+
 void Wave::zeroInitHeader()
 {
     std::memset(&m_header, 0, sizeof(Header));
@@ -749,7 +857,7 @@ uint16_t Wave::getNumChannels() const
 /*!
  * \brief Gets the number of frames for the audio data.
  * \details An audio frame comprises all samples that are played at the same time.
-            For a stereo track, the number of frames will be the number of samples divided by two.
+            For a stereo track, the number of frames is the number of samples divided by two.
  * \result The number of frames.
  */
 uint32_t Wave::getNumFrames() const

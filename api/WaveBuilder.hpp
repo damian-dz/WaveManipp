@@ -11,7 +11,7 @@ namespace wm {
  * \details This class makes it possible to join multiple Wave objects without memory reallocation overhead.
             WaveBuilder objects store pointers to the actual Wave objects.
  */
-class WaveBuilder
+class WAVEMANIPPAPI WaveBuilder
 {
     std::vector<const Wave*> m_wavPtrs;
 

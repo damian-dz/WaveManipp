@@ -1,32 +1,40 @@
 workspace "WaveManipp"
-    architecture "x64"
-    configurations { "Debug", "Release" }
+    configurations { "DynDebug", "DynRelease", "StaDebug", "StaRelease" }
+    platforms { "x86", "x64" }
+    
+    filter "platforms:x86"
+        architecture "x86"
+
+    filter "platforms:x64"
+        architecture "x86_64"
+        
+    filter "configurations:Dyn*"
+        kind "SharedLib"
+        defines "WAVEMANIPP_DLL"
+        
+    filter "configurations:Sta*"
+        kind "StaticLib"
 
 project "WaveManipp"
     language "C++"
-	location "WaveManipp"
-    kind "StaticLib"
-	targetdir "bin/%{cfg.buildcfg}"
-	files {
-        "src/**.h",
-        "src/**.hpp",
-        "src/**.cpp"
-    }
-	
-	defines { }
+    location "WaveManipp"
+    targetdir "bin/%{cfg.platform}/%{cfg.buildcfg}"
+    files { "api/**.hpp", "api/**.h", "src/**.cpp" }
+    includedirs "api/"
 
-	filter "system:windows"       
-	    cppdialect "C++17"
-		defines {
-		    "_CRT_SECURE_NO_WARNINGS"
-		} 
-		staticruntime "On"
-		systemversion "latest"
+    filter "system:windows"       
+        cppdialect "C++17"
+        defines "_CRT_SECURE_NO_WARNINGS"
+        systemversion "latest"
+        filter "configurations:Dyn*"
+            staticruntime "Off"
+        filter "configurations:Sta*"
+            staticruntime "On"   
 
-    filter "configurations:Debug"
-	    defines { "DEBUG" }
+    filter "configurations:*Debug"
+        defines "DEBUG"
         symbols "On"
 
-    filter "configurations:Release"
-        defines { "NDEBUG" }
+    filter "configurations:*Release"
+        defines "NDEBUG"
         optimize "On"
