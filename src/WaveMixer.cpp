@@ -8,7 +8,7 @@ namespace wm {
 WaveMixer::WaveMixer() :
     m_bitsPerSample(16),
     m_numChannels(1),
-    m_sampleRate(44100)
+    m_sampleRate(default_sample_rate)
 {
 }
 
@@ -31,23 +31,31 @@ WaveMixer::~WaveMixer()
 }
 
 /*!
- * \brief Adds an empty track to the mix.
+ * \brief Adds an empty track with the specified number of channels to the mix.
  */
-void WaveMixer::addTrack()
+void WaveMixer::addTrack(uint16_t numChannels)
 {
+    Track track;
+    track.setNumChannels(numChannels);
     m_tracks.push_back(Track());
 }
 
 void WaveMixer::addTrack(uint32_t offset, const Wave& wav)
 {
     Track track;
+    track.setNumChannels(wav.getNumChannels());
     track.addChunk(offset, wav);
     m_tracks.push_back(track);
 }
 
+void WaveMixer::addTrackAt(float timeInSec, const Wave& wav)
+{
+    uint32_t offset = static_cast<uint32_t>(std::round(static_cast<double>(timeInSec) * m_sampleRate));
+    addTrack(offset, wav);
+}
+
 /*!
- * \brief Returns the number of frames from the leftmost frame of the first chunk
-          to the rightmost frame of the last chunk.
+ * \brief Returns the number of frames from index 0 to the rightmost frame of the last chunk.
  * \result The number of frames.
  */
 uint32_t WaveMixer::getNumFrames() const
@@ -82,16 +90,67 @@ void WaveMixer::removeTrack(int trackIdx)
     m_tracks.erase(m_tracks.begin() + trackIdx);
 }
 
+void WaveMixer::setBitsPerSample(uint16_t bitsPerSample)
+{
+    m_bitsPerSample = bitsPerSample;
+}
+
+void WaveMixer::setNumChannels(uint16_t numChannels)
+{
+    m_numChannels = numChannels;
+}
+
+void WaveMixer::setSampleRate(uint32_t sampleRate)
+{
+    m_sampleRate = sampleRate;
+}
+
 void WaveMixer::setTrackVolume(int trackIdx, float volume)
 {
     m_tracks[trackIdx].setTrackVolume(volume);
 }
 
+Wave WaveMixer::toWave_old()
+{
+    uint32_t numFrames = getNumFrames();
+    Wave result(numFrames, m_numChannels, m_bitsPerSample, m_sampleRate);
+    float* wave = result.audioData();
+    std::memset(wave, 0, numFrames * uint64_t(m_numChannels) * sizeof(float));
+    for (const Track& track : m_tracks) {
+        uint32_t tStart = track.getMinStartOffset();
+        uint32_t tEnd = track.getMaxEndOffset();
+
+        uint32_t numTrackFrames = tEnd - tStart;
+        uint32_t numTrackSamples = numTrackFrames * uint32_t(m_numChannels);
+        float* trackData = reinterpret_cast<float*>(std::malloc(numTrackSamples * sizeof(float)));
+        std::memset(trackData, 0, numTrackSamples * sizeof(float));
+        uint16_t trackNumChannels = track.getNumChannels();
+        float trackVolume = track.getTrackVolume();
+        for (int i = 0; i < track.getNumChunks(); ++i) {
+            Chunk chunk = track.getChunk(i);
+            const float* chunkData = chunk.wave->constAudioData();
+            uint32_t jStart = chunk.startOffset * trackNumChannels;
+            uint32_t jEnd = chunk.endOffset * trackNumChannels;
+            for (uint32_t j = jStart; j < jEnd; ++j) {
+                trackData[j - tStart * trackNumChannels] += chunkData[j - jStart] * trackVolume;
+            }
+        }
+
+        for (int y = tStart; y < tEnd; y++) {
+            for (int x = 0; x < m_numChannels; x++) {
+                int i = y * m_numChannels + x;
+                int j = (y - tStart) * trackNumChannels + (x % trackNumChannels);
+                wave[i] += trackData[j];
+            }
+        }
+        std::free(trackData);
+    }
+    return result;
+}
+
 /*!
  * \brief Merges all of the Wave objects pointed to into a single Wave object.
  * \details The objects pointed to must not be destroyed or modified before calling this method.
-            If there are overlapping chunks within a track,
-            the overlap will be overwritten by the one with the larger index.
  * \result The merged Wave object.
  */
 Wave WaveMixer::toWave()
@@ -104,23 +163,17 @@ Wave WaveMixer::toWave()
         uint32_t tStart = track.getMinStartOffset();
         uint32_t tEnd = track.getMaxEndOffset();
         uint32_t numTrackFrames = tEnd - tStart;
-        uint32_t numTrackSamples = numTrackFrames * uint32_t(m_numChannels);
-        float* trackData = reinterpret_cast<float*>(std::malloc(numTrackSamples * sizeof(float)));
-        std::memset(trackData, 0, numTrackSamples * sizeof(float));
+        uint16_t trackNumChannels = track.getNumChannels();
         float trackVolume = track.getTrackVolume();
         for (int i = 0; i < track.getNumChunks(); ++i) {
             Chunk chunk = track.getChunk(i);
             const float* chunkData = chunk.wave->constAudioData();
-            uint32_t jStart = chunk.startOffset * m_numChannels;
-            uint32_t jEnd = chunk.endOffset * m_numChannels;
+            uint32_t jStart = chunk.startOffset * trackNumChannels;
+            uint32_t jEnd = chunk.endOffset * trackNumChannels;
             for (uint32_t j = jStart; j < jEnd; ++j) {
-                trackData[j - jStart] = chunkData[j - jStart] * trackVolume;
+                wave[j] += chunkData[j - jStart] * trackVolume;
             }
         }
-        for (uint32_t i = 0; i < numTrackSamples; ++i) {
-            wave[i + tStart] += trackData[i];
-        }
-        std::free(trackData);
     }
     return result;
 }
@@ -174,9 +227,19 @@ int WaveMixer::Track::getNumChunks() const
     return int(m_chunks.size());
 }
 
+uint16_t WaveMixer::Track::getNumChannels() const
+{
+    return m_numChannels;
+}
+
 float WaveMixer::Track::getTrackVolume() const
 {
     return m_trackVolume;
+}
+
+void WaveMixer::Track::setNumChannels(uint16_t numChannels)
+{
+    m_numChannels = numChannels;
 }
 
 void WaveMixer::Track::setTrackVolume(float volume)

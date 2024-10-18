@@ -26,11 +26,14 @@ class WAVEMANIPPAPI WaveMixer
         uint32_t getMaxEndOffset() const;
         uint32_t getMinStartOffset() const;
         int getNumChunks() const;
+        uint16_t getNumChannels() const;
         float getTrackVolume() const;
+        void setNumChannels(uint16_t numChannels);
         void setTrackVolume(float volume);
 
     private:
         std::vector<Chunk> m_chunks;
+        uint16_t m_numChannels;
         float m_trackVolume = 1.f;
     };
 
@@ -44,14 +47,19 @@ public:
     WaveMixer(const Wave& wav);
     ~WaveMixer();
 
-    void addTrack();
+    void addTrack(uint16_t numChannels);
     void addTrack(uint32_t offset, const Wave& wav);
+    void addTrackAt(float timeInSec, const Wave& wav);
     uint32_t getNumFrames() const;
     int getNumTracks() const;
     float getTrackVolume(int trackIdx) const;
     void insertChunk(int trackIdx, uint32_t offset, const Wave& wav);
     void removeTrack(int trackIdx);
+    void setBitsPerSample(uint16_t bitsPerSample);
+    void setNumChannels(uint16_t numChannels);
+    void setSampleRate(uint32_t sampleRate);
     void setTrackVolume(int trackIdx, float volume);
+    Wave toWave_old();
     Wave toWave();
 };
 }

@@ -19,7 +19,7 @@ project "WaveManipp"
     language "C++"
     location "WaveManipp"
     targetdir "bin/%{cfg.platform}/%{cfg.buildcfg}"
-    files { "api/**.hpp", "src/**.cpp" }
+    files { "api/**.hpp", "api/**.h", "src/**.cpp" }
     includedirs "api/"
 
     filter "system:windows"       

@@ -66,13 +66,13 @@ public:
     Wave();
     Wave(const char* filename);
     Wave(const std::string& filename);
-    Wave(uint32_t numFrames, uint16_t numChannels = 2, uint16_t bitDepth = 16, uint32_t sampleRate = 44100);
+    Wave(uint32_t numFrames, uint16_t numChannels = 2, uint16_t bitDepth = 16, uint32_t sampleRate = default_sample_rate);
     Wave(const Wave& other);
     ~Wave();
 
-    void open(const char* filename, uint32_t bufferSize = 24576);
-    void open(const std::string& filename, uint32_t bufferSize = 24576);
-    void readData(std::FILE* file, uint32_t bufferSize = 24576);
+    void open(const char* filename, uint32_t bufferSize = default_buffer_size);
+    void open(const std::string& filename, uint32_t bufferSize = default_buffer_size);
+    void readData(std::FILE* file, uint32_t bufferSize = default_buffer_size);
 
     const float* constAudioData() const;
     float* audioData() const;
@@ -81,9 +81,10 @@ public:
     float avgValue(int channel = 0) const;
     void changeVolume(float volume, int channel = 0);
     void downmixToMono();
-    static Wave generateRandom(uint32_t samplingFreq, uint32_t numFrames);
-    static Wave generateSine(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames,
-                             bool multiThreaded = false);
+    static Wave generateRandom(uint32_t numFrames, uint16_t bitDepth = 16, uint32_t sampleRate = default_sample_rate);
+    static Wave randomFromDuration(float duration, uint16_t bitDepth = 16, uint32_t sampleRate = default_sample_rate);
+    static Wave generateSine(float waveFreq, float phaseShift,  uint32_t numFrames,
+        uint16_t bitDepth = 16, uint32_t sampleRate = default_sample_rate, bool multiThreaded = false);
     static Wave generateSquare(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames,
                                bool multiThreaded = false);
     static Wave generateTriangle(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames,
@@ -94,6 +95,7 @@ public:
                                          bool absolute = false, int channel = 0, bool multiThreaded = false) const;
     std::vector<float> getStretchedBuffer(uint32_t offset, uint32_t stretchedSampleCount, float stretchFactor,
                                           int channel = 0) const;
+    float getAbsPeak(int channel) const;
     void insertAudio(uint32_t offset, const float* audio, uint32_t numSamples);
     void insertAudio(uint32_t offset, std::vector<float>& audio);
     bool isEmpty() const;
@@ -111,9 +113,9 @@ public:
     void upmixToStereo();
     void zeroInitHeader();
 
-    void saveAs(const char* filename, uint32_t bufferSize = 24576);
-    void saveAs(const std::string& filename, uint32_t bufferSize = 24576);
-    void writeData(std::FILE* file, uint32_t bufferSize = 24576);
+    void saveAs(const char* filename, uint32_t bufferSize = default_buffer_size);
+    void saveAs(const std::string& filename, uint32_t bufferSize = default_buffer_size);
+    void writeData(std::FILE* file, uint32_t bufferSize = default_buffer_size);
 
     void setSampleBitDepth(uint16_t sampleBitDepth);
     void setSampleRate(uint32_t sampleRate);
