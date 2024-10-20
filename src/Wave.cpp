@@ -442,9 +442,9 @@ std::vector<float> Wave::getSqueezedBuffer(uint32_t offset, uint32_t squeezedSam
     uint16_t numChannels = m_waveProperties.getNumChannels();
     uint32_t absoluteOffset = numChannels * offset;
     #pragma omp parallel for if (multiThreaded)
-    for (int32_t i = 0; i < squeezedSampleCount; ++i) {
-        uint32_t current = uint32_t(roundf(i * squeezeFactor)) * numChannels;
-        uint32_t next = uint32_t(roundf((i + 1) * squeezeFactor)) * numChannels;
+    for (int32_t i = 0; i < int32_t(squeezedSampleCount); ++i) {
+        int32_t current = int32_t(roundf(i * squeezeFactor)) * numChannels;
+        int32_t next = int32_t(roundf((i + 1) * squeezeFactor)) * numChannels;
         float sum = 0.f;
         if (!absolute) {
             for (int32_t j = current; j < next; j += numChannels) {
@@ -625,7 +625,7 @@ Wave Wave::generateSine(float waveFreq, float phaseShift,  uint32_t numFrames,
     float timeStep = 1.f / sampleRate;
     float omega = 2 * 3.1415927f * waveFreq;
     #pragma omp parallel for if(multiThreaded)
-    for (int32_t i = 0; i < numFrames; ++i) {
+    for (int32_t i = 0; i < int32_t(numFrames); ++i) {
         result.m_pData[i] = coeff * sinf(omega * (i * timeStep + phaseShift));
     }
     return result;
@@ -647,7 +647,7 @@ Wave Wave::generateSquare(float waveFreq, float phaseShift, uint32_t samplingFre
     float omega = 2 * 3.1415927f * waveFreq;
     constexpr float coeff = 1.f - std::numeric_limits<float>::epsilon();
     #pragma omp parallel for if(multiThreaded)
-    for (int32_t i = 0; i < numFrames; ++i) {
+    for (int32_t i = 0; i < int32_t(numFrames); ++i) {
         result.m_pData[i] = sinf(omega * (i * timeStep + phaseShift)) < 0 ? -1.f * coeff : 1.f * coeff;
     }
     return result;
@@ -670,7 +670,7 @@ Wave Wave::generateTriangle(float waveFreq, float phaseShift, uint32_t samplingF
     constexpr float coeff = 2 * (1.f - std::numeric_limits<float>::epsilon()) / pi;
     float omega = 2 * pi * waveFreq;
     #pragma omp parallel for if(multiThreaded)
-    for (int32_t i = 0; i < numFrames; ++i) {
+    for (int32_t i = 0; i < int32_t(numFrames); ++i) {
         result.m_pData[i] = coeff * asinf(sinf(omega * (i * timeStep + phaseShift)));
     }
     return result;

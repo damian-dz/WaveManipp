@@ -9,7 +9,7 @@ namespace wm {
 /*!
  * \brief A class that makes it possibe to mix multiple audio tracks.
  */
-class WAVEMANIPPAPI WaveMixer
+class WaveMixer
 {
     struct Chunk
     {
@@ -43,24 +43,24 @@ class WAVEMANIPPAPI WaveMixer
     std::vector<Track> m_tracks;
 
 public:
-    WaveMixer();
-    WaveMixer(const Wave& wav);
-    ~WaveMixer();
+    WAVEMANIPPAPI WaveMixer();
+    WAVEMANIPPAPI WaveMixer(const Wave& wav);
+    WAVEMANIPPAPI ~WaveMixer();
 
-    void addTrack(uint16_t numChannels);
-    void addTrack(uint32_t offset, const Wave& wav);
-    void addTrackAt(float timeInSec, const Wave& wav);
-    uint32_t getNumFrames() const;
-    int getNumTracks() const;
-    float getTrackVolume(int trackIdx) const;
-    void insertChunk(int trackIdx, uint32_t offset, const Wave& wav);
-    void removeTrack(int trackIdx);
-    void setBitsPerSample(uint16_t bitsPerSample);
-    void setNumChannels(uint16_t numChannels);
-    void setSampleRate(uint32_t sampleRate);
-    void setTrackVolume(int trackIdx, float volume);
-    Wave toWave_old();
-    Wave toWave();
+    WAVEMANIPPAPI void addTrack(uint16_t numChannels);
+    WAVEMANIPPAPI void addTrack(uint32_t offset, const Wave& wav);
+    WAVEMANIPPAPI void addTrackAt(float timeInSec, const Wave& wav);
+    WAVEMANIPPAPI uint32_t getNumFrames() const;
+    WAVEMANIPPAPI int getNumTracks() const;
+    WAVEMANIPPAPI float getTrackVolume(int trackIdx) const;
+    WAVEMANIPPAPI void insertChunk(int trackIdx, uint32_t offset, const Wave& wav);
+    WAVEMANIPPAPI void removeTrack(int trackIdx);
+    WAVEMANIPPAPI void setBitsPerSample(uint16_t bitsPerSample);
+    WAVEMANIPPAPI void setNumChannels(uint16_t numChannels);
+    WAVEMANIPPAPI void setSampleRate(uint32_t sampleRate);
+    WAVEMANIPPAPI void setTrackVolume(int trackIdx, float volume);
+    WAVEMANIPPAPI Wave toWave_old();
+    WAVEMANIPPAPI Wave toWave();
 };
 }
 

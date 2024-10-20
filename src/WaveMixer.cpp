@@ -136,8 +136,8 @@ Wave WaveMixer::toWave_old()
             }
         }
 
-        for (int y = tStart; y < tEnd; y++) {
-            for (int x = 0; x < m_numChannels; x++) {
+        for (uint32_t y = tStart; y < tEnd; y++) {
+            for (uint32_t x = 0; x < m_numChannels; x++) {
                 int i = y * m_numChannels + x;
                 int j = (y - tStart) * trackNumChannels + (x % trackNumChannels);
                 wave[i] += trackData[j];

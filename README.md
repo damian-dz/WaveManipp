@@ -16,7 +16,7 @@
 Probably the easiest way to compile WaveManipp from source on Windows is by using [premake5](https://github.com/premake/premake-core) in tandem with Microsoft Visual Studio. Assuming that the premake5 path is in your environment variables and you are inside the folder where premake5.lua resides, you can type in Command Prompt:
 
 ```
-premake5 vs2019
+premake5 vs2022
 ```
 
 This should generate a solution and a project, both of which will be called WaveManipp. You should see eight configurations available -- DynDebug, DynRelease, StaDebug, StaRelease -- for both the Win32 and x64 platforms. The Dyn- prefix stands for dynamic, and the Sta- prefix stands for static. If you want to build all of the configurations/platforms at once, go to Build -> Batch Build -> Select All, and then Build.
