@@ -611,13 +611,13 @@ Wave Wave::generateRandom(uint32_t numFrames, uint16_t bitDepth, uint32_t sample
 
 /*!
  * \brief Generates a single-channel sine wave.
- * \param waveFreq &mdash; the frequency of the wave, in Hz
- * \param phaseShift &mdash; the phase shift of the wave, in seconds
- * \param samplingFreq &mdash; the sampling frequency, in Hz
- * \param numFrames &mdash; the number of audio frames to generate
+ * \param waveFreq : the frequency of the wave, in Hz
+ * \param phaseShift : the phase shift of the wave, in seconds
+ * \param sampleRate : the sampling frequency, in Hz
+ * \param numFrames : the number of audio frames to generate
  * \result The generated sine wave.
  */
-Wave Wave::generateSine(float waveFreq, float phaseShift,  uint32_t numFrames,
+Wave Wave::generateSine(float waveFreq, float phaseShift, uint32_t numFrames,
     uint16_t bitDepth, uint32_t sampleRate, bool multiThreaded)
 {
     Wave result(numFrames, 1, bitDepth, sampleRate);
@@ -700,7 +700,7 @@ std::vector<float> Wave::getAveragedOutData(uint32_t binSize, bool absolute, int
             }
         } else {
             for (uint32_t j = channel; j < endPoint; j += numChannels) {
-                sum += double(fabs(m_pData[i * binSize * numChannels + j]));
+                sum += double(std::fabs(m_pData[i * binSize * numChannels + j]));
             }
         }
         result[i] = float(sum / binSize);
