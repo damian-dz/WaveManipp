@@ -5,5 +5,6 @@
 
 #include "WaveBuilder.hpp"
 #include "WaveMixer.hpp"
+#include "RecordingBuffer.hpp"
 
 #endif // !WAVE_MANIPP_H
