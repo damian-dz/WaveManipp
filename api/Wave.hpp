@@ -104,6 +104,7 @@ public:
     float maxValue(int channel = 0) const;
     float minValue(int channel = 0) const;
     void reserveMemory(uint32_t numSamples, bool zeroInit = false);
+    Wave resample(uint32_t targetSampleRate) const;
     void resizeMemory(uint32_t numSamples, bool zeroInit = true);
     void reverse(int channel = 0);
     void setAudio(const float* audio, uint32_t numSamples);

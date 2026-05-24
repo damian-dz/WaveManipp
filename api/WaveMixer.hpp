@@ -28,13 +28,22 @@ class WaveMixer
         int getNumChunks() const;
         uint16_t getNumChannels() const;
         float getTrackVolume() const;
+        float getTrackPan() const;
+        bool isTrackMuted() const;
+        bool isTrackSolo() const;
         void setNumChannels(uint16_t numChannels);
         void setTrackVolume(float volume);
+        void setTrackPan(float pan);
+        void setTrackMuted(bool muted);
+        void setTrackSolo(bool solo);
 
     private:
         std::vector<Chunk> m_chunks;
-        uint16_t m_numChannels;
+        uint16_t m_numChannels = 1;
         float m_trackVolume = 1.f;
+        float m_trackPan    = 0.f;
+        bool  m_muted       = false;
+        bool  m_solo        = false;
     };
 
     uint16_t m_bitsPerSample;
@@ -53,12 +62,18 @@ public:
     WAVEMANIPPAPI uint32_t getNumFrames() const;
     WAVEMANIPPAPI int getNumTracks() const;
     WAVEMANIPPAPI float getTrackVolume(int trackIdx) const;
+    WAVEMANIPPAPI float getTrackPan(int trackIdx) const;
+    WAVEMANIPPAPI bool  isTrackMuted(int trackIdx) const;
+    WAVEMANIPPAPI bool  isTrackSolo(int trackIdx) const;
     WAVEMANIPPAPI void insertChunk(int trackIdx, uint32_t offset, const Wave& wav);
     WAVEMANIPPAPI void removeTrack(int trackIdx);
     WAVEMANIPPAPI void setBitsPerSample(uint16_t bitsPerSample);
     WAVEMANIPPAPI void setNumChannels(uint16_t numChannels);
     WAVEMANIPPAPI void setSampleRate(uint32_t sampleRate);
     WAVEMANIPPAPI void setTrackVolume(int trackIdx, float volume);
+    WAVEMANIPPAPI void setTrackPan(int trackIdx, float pan);
+    WAVEMANIPPAPI void setTrackMuted(int trackIdx, bool muted);
+    WAVEMANIPPAPI void setTrackSolo(int trackIdx, bool solo);
     WAVEMANIPPAPI Wave toWave_old();
     WAVEMANIPPAPI Wave toWave();
 };

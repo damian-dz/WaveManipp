@@ -1,10 +1,13 @@
 #include "Wave.hpp"
+#include <cmath>
 
 namespace wm {
 /*!
  * \brief Constructs an empty Wave object with a zero-initialized header.
  */
 Wave::Wave() :
+    m_isLittleEndian(true),
+    m_numSamples(0),
     m_pData(nullptr)
 {
     zeroInitHeader();
@@ -15,6 +18,8 @@ Wave::Wave() :
  * \param filename &mdash; the name of the file
  */
 Wave::Wave(const char* filename) :
+    m_isLittleEndian(true),
+    m_numSamples(0),
     m_pData(nullptr)
 {
     zeroInitHeader();
@@ -26,6 +31,8 @@ Wave::Wave(const char* filename) :
  * \param filename &mdash; the name of the file
  */
 Wave::Wave(const std::string& filename) :
+    m_isLittleEndian(true),
+    m_numSamples(0),
     m_pData(nullptr)
 {
     zeroInitHeader();
@@ -34,7 +41,8 @@ Wave::Wave(const std::string& filename) :
 
 Wave::Wave(uint32_t numFrames, uint16_t numChannels, uint16_t bitDepth, uint32_t sampleRate) :
     m_isLittleEndian(true),
-    m_numSamples(numChannels * numFrames)
+    m_numSamples(numChannels * numFrames),
+    m_pData(nullptr)
 {
     zeroInitHeader();
     setFourCharacterCodes();
@@ -174,10 +182,16 @@ void Wave::setWaveProperties(bool onlyDataChunk)
  */
 void Wave::reserveMemory(uint32_t numSamples, bool zeroInit)
 {
+    if (numSamples == 0) {
+        std::free(m_pData);
+        m_pData = nullptr;
+        return;
+    }
+
     if (!zeroInit) {
-        m_pData = reinterpret_cast<float*>(std::malloc(numSamples * sizeof(m_pData)));
+        m_pData = reinterpret_cast<float*>(std::malloc(numSamples * sizeof(float)));
     } else {
-        m_pData = reinterpret_cast<float*>(std::calloc(numSamples, sizeof(m_pData)));
+        m_pData = reinterpret_cast<float*>(std::calloc(numSamples, sizeof(float)));
     }
     if (m_pData == nullptr) {
         throwError("Failed to reserve memory.",
@@ -204,14 +218,14 @@ void Wave::resizeMemory(uint32_t numSamples, bool zeroInit)
         std::free(m_pData);
         m_pData = nullptr;
     } else {
-        float* pNewData = reinterpret_cast<float*>(std::realloc(m_pData, numSamples * sizeof(m_pData)));
+        float* pNewData = reinterpret_cast<float*>(std::realloc(m_pData, numSamples * sizeof(float)));
         if (pNewData == nullptr) {
             throwError("Failed to reallocate memory.",
                        "Wave::resizeMemory(uint32_t, bool)");
         }
         m_pData = pNewData;
         if (zeroInit) {
-            std::memset(&m_pData[count], 0, (numSamples - count) * sizeof(m_pData));
+            std::memset(&m_pData[count], 0, (numSamples - count) * sizeof(float));
         }
     }
 }
@@ -514,7 +528,7 @@ void Wave::insertAudio(uint32_t offset, std::vector<float>& audio)
 
 bool Wave::isEmpty() const
 {
-    return (m_pData == nullptr);
+    return (m_pData == nullptr || m_numSamples == 0);
 }
 
 /*!
@@ -572,7 +586,7 @@ void Wave::downmixToMono()
     uint16_t numChannels = m_waveProperties.getNumChannels();
     uint32_t newDataChunkSize = m_waveProperties.getDataChunkSize() / numChannels;
     uint32_t newNumSamples = m_numSamples / numChannels;
-    float* pNewData = reinterpret_cast<float*>(std::malloc(newNumSamples * sizeof(pNewData)));
+    float* pNewData = reinterpret_cast<float*>(std::malloc(newNumSamples * sizeof(float)));
     if (pNewData != nullptr) {
         for (uint32_t y = 0; y < numSamples; y += numChannels) {
             float sum = 0.f;
@@ -766,10 +780,60 @@ void Wave::reverse(int channel)
     }
 }
 
+Wave Wave::resample(uint32_t targetSampleRate) const
+{
+    if (targetSampleRate == 0) {
+        throwError("Target sample rate must be greater than zero.",
+                   "Wave::resample(uint32_t)");
+    }
+    if (isEmpty() || targetSampleRate == getSampleRate()) {
+        return Wave(*this);
+    }
+
+    const uint32_t srcFrames = getNumFrames();
+    const uint16_t channels  = getNumChannels();
+    const uint32_t dstFrames = std::max<uint32_t>(
+        1,
+        static_cast<uint32_t>(std::llround(
+            static_cast<double>(srcFrames) * targetSampleRate / getSampleRate())));
+
+    Wave result(dstFrames, channels, getSampleBitDepth(), targetSampleRate);
+    float* dst = result.audioData();
+
+    if (srcFrames == 1) {
+        for (uint32_t i = 0; i < dstFrames; ++i) {
+            for (uint16_t ch = 0; ch < channels; ++ch) {
+                dst[i * channels + ch] = m_pData[ch];
+            }
+        }
+        return result;
+    }
+
+    const double srcRate = static_cast<double>(getSampleRate());
+    const double dstRate = static_cast<double>(targetSampleRate);
+    for (uint32_t i = 0; i < dstFrames; ++i) {
+        const double srcPos = i * srcRate / dstRate;
+        const uint32_t i0 = static_cast<uint32_t>(srcPos);
+        const uint32_t i1 = std::min(i0 + 1, srcFrames - 1);
+        const float frac = static_cast<float>(srcPos - i0);
+
+        for (uint16_t ch = 0; ch < channels; ++ch) {
+            const float a = m_pData[i0 * channels + ch];
+            const float b = m_pData[i1 * channels + ch];
+            dst[i * channels + ch] = a + (b - a) * frac;
+        }
+    }
+
+    return result;
+}
+
 void Wave::setAudio(const float* audio, uint32_t numSamples)
 {
     if (numSamples != m_numSamples) {
         resizeMemory(numSamples, false);
+    }
+    if (numSamples == 0 || audio == nullptr) {
+        return;
     }
     std::memcpy(m_pData, audio, m_numSamples * sizeof(float));
 }
@@ -812,7 +876,7 @@ void Wave::upmixToStereo()
     uint32_t newDataChunkSize = m_waveProperties.getDataChunkSize() * numChannels;
     uint32_t newNumSamples = m_numSamples * numChannels;
     std::cout << newNumSamples << std::endl;
-    float* pNewData = reinterpret_cast<float*>(std::malloc(newNumSamples * sizeof(pNewData)));
+    float* pNewData = reinterpret_cast<float*>(std::malloc(newNumSamples * sizeof(float)));
     if (pNewData != nullptr) {
         for (uint32_t y = 0; y < numSamples; ++y) {
             for (uint16_t x = 0; x < numChannels; ++x) {
@@ -1023,21 +1087,34 @@ const float& Wave::operator()(uint32_t sample, int channel) const
 
 void Wave::operator=(const Wave& other)
 {
+    if (this == &other) {
+        return;
+    }
+
+    const uint32_t oldNumSamples = m_numSamples;
     m_header = other.m_header;
     m_dataSubChunk = other.m_dataSubChunk;
     m_isLittleEndian = other.m_isLittleEndian;
-    m_numSamples = other.m_numSamples;
     m_waveProperties = other.m_waveProperties;
+
+    if (other.m_pData == nullptr || other.m_numSamples == 0) {
+        std::free(m_pData);
+        m_pData = nullptr;
+        m_numSamples = other.m_numSamples;
+        return;
+    }
+
     if (m_pData == nullptr) {
+        m_numSamples = other.m_numSamples;
         reserveMemory(other.m_numSamples);
         copySamples(other.m_pData, m_pData, m_numSamples);
-    } else if (other.m_pData != nullptr && m_numSamples == other.m_numSamples) {
-        copySamples(other.m_pData, m_pData, m_numSamples);
-    } else if (other.m_pData != nullptr) {
-        resizeMemory(other.m_numSamples, false);
+    } else if (oldNumSamples == other.m_numSamples) {
+        m_numSamples = other.m_numSamples;
         copySamples(other.m_pData, m_pData, m_numSamples);
     } else {
-        m_pData = nullptr;
+        m_numSamples = oldNumSamples;
+        resizeMemory(other.m_numSamples, false);
+        copySamples(other.m_pData, m_pData, m_numSamples);
     }
 }
 
