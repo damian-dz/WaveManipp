@@ -10,6 +10,7 @@
   * [Supported Formats](#supported-formats)
 * [The `WaveBuilder` Class](#the-wavebuilder-class)
 * [The `WaveMixer` Class](#the-wavemixer-class)
+* [The `wm::dsp` Namespace](#the-wmdsp-namespace)
 
 ## Compiling from Source
 
@@ -142,5 +143,47 @@ Now we can insert an audio chunk by providing the track index as well as a `Wave
 ```c++
 waveMixer.insertChunk(0, 10000, sineWave);
 ```
+
+#### [Back to Table of Contents](#table-of-contents)
+
+* * *
+## The `wm::dsp` Namespace
+
+Audio processing algorithms that operate on `Wave` objects are collected in the `wm::dsp` namespace (`Dsp.hpp` / `Dsp.cpp`). These are free functions rather than member functions of `Wave`, which keeps the `Wave` class as a data container and makes the DSP operations composable independently of the file format.
+
+Include `<WaveManipp.h>` to get the full namespace, or `<Dsp.hpp>` directly.
+
+```cpp
+#include <WaveManipp.h>
+
+wm::Wave wave("audio.wav");
+
+// Queries
+float p = wm::dsp::peak(wave);
+float pr = wm::dsp::peakRange(wave, 0, 44100);
+
+// Gain
+wm::dsp::applyGain(wave, 0.5f);                         // halve the level
+wm::dsp::applyGainRange(wave, 0, 44100, 2.0f);          // double first second only
+
+// Normalize
+wm::dsp::normalize(wave);                               // normalize to 0 dBFS
+wm::dsp::normalize(wave, -3.f);                         // normalize to -3 dBFS
+wm::dsp::normalizeRange(wave, 0, 44100, -6.f);          // normalize first second to -6 dBFS
+
+// Silence, invert
+wm::dsp::silence(wave, 22050, 44100);                   // silence second half of first second
+wm::dsp::invertRange(wave, 0, 44100);                   // phase flip first second
+
+// Fades (logarithmic by default; pass FadeCurve::Linear for a straight ramp)
+wm::dsp::fadeIn(wave, 0, 44100);
+wm::dsp::fadeOut(wave, wave.getNumFrames() - 44100, wave.getNumFrames());
+
+// Reverse
+wm::dsp::reverse(wave);                                 // reverse all channels
+wm::dsp::reverseChannel(wave, 0);                       // reverse left channel only
+```
+
+All range functions clamp `endFrame` to `wave.getNumFrames()` and are no-ops if the wave is empty or `startFrame >= endFrame`.
 
 #### [Back to Table of Contents](#table-of-contents)

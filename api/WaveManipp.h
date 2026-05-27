@@ -6,5 +6,6 @@
 #include "WaveBuilder.hpp"
 #include "WaveMixer.hpp"
 #include "RecordingBuffer.hpp"
+#include "Dsp.hpp"
 
 #endif // !WAVE_MANIPP_H

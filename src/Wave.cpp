@@ -1,4 +1,5 @@
 #include "Wave.hpp"
+#include "Dsp.hpp"
 #include <cmath>
 
 namespace wm {
@@ -768,16 +769,7 @@ float Wave::minValue(int channel) const
 
 void Wave::reverse(int channel)
 {
-    int numChannels = getNumChannels();
-    int i = getNumSamples() - numChannels + channel;
-    int j = channel;
-    while (i > j) {
-        float sample = m_pData[i];
-        m_pData[i] = m_pData[j];
-        m_pData[j] = sample;
-        i -= numChannels;
-        j += numChannels;
-    }
+    dsp::reverseChannel(*this, channel);
 }
 
 Wave Wave::resample(uint32_t targetSampleRate) const
