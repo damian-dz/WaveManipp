@@ -35,4 +35,18 @@ void fadeOut(Wave& wave, uint32_t startFrame, uint32_t endFrame, FadeCurve curve
 void reverseChannel(Wave& wave, int channel);
 void reverse(Wave& wave);
 
+// ---- Biquad IIR filter ------------------------------------------------------
+
+struct BiquadCoeffs {
+    float b0, b1, b2;   // feed-forward coefficients (normalized, a0 = 1)
+    float a1, a2;        // feed-back coefficients    (normalized, a0 = 1)
+};
+
+BiquadCoeffs makePeaking  (float freqHz, float sampleRate, float gainDb, float Q);
+BiquadCoeffs makeLowShelf (float freqHz, float sampleRate, float gainDb);
+BiquadCoeffs makeHighShelf(float freqHz, float sampleRate, float gainDb);
+
+void processBiquad     (Wave& wave, const BiquadCoeffs& c);
+void processBiquadRange(Wave& wave, uint32_t startFrame, uint32_t endFrame, const BiquadCoeffs& c);
+
 } // namespace wm::dsp
