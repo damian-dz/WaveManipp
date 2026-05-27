@@ -41,90 +41,33 @@ void checkSameLength(const std::vector<double>& real, const std::vector<double>&
         throwError("Mismatched lengths.", funcName);
 }
 
-} // namespace
-
-namespace wm::dsp::fft {
-
-bool isPowerOfTwo(std::size_t n)
+unsigned int radix2Levels(std::size_t n, const std::string& funcName)
 {
-    return n != 0 && (n & (n - 1)) == 0;
-}
-
-bool isPowerOfFour(std::size_t n)
-{
-    if (n == 0)
-        return false;
-    while (n > 1) {
-        if (n % 4 != 0)
-            return false;
-        n /= 4;
-    }
-    return true;
-}
-
-void transform(std::vector<double>& real, std::vector<double>& imag, Algorithm algorithm)
-{
-    checkSameLength(real, imag, "wm::dsp::fft::transform");
-    const std::size_t n = real.size();
-    if (n == 0)
-        return;
-
-    switch (algorithm) {
-    case Algorithm::Auto:
-        if (isPowerOfFour(n))
-            transformRadix4(real, imag);
-        else if (isPowerOfTwo(n))
-            transformRadix2(real, imag);
-        else
-            transformBluestein(real, imag);
-        break;
-    case Algorithm::Radix2:
-        transformRadix2(real, imag);
-        break;
-    case Algorithm::Radix4:
-        transformRadix4(real, imag);
-        break;
-    case Algorithm::Bluestein:
-        transformBluestein(real, imag);
-        break;
-    }
-}
-
-void inverseTransform(std::vector<double>& real, std::vector<double>& imag,
-                      bool scale, Algorithm algorithm)
-{
-    checkSameLength(real, imag, "wm::dsp::fft::inverseTransform");
-    transform(imag, real, algorithm);
-    if (!scale || real.empty())
-        return;
-
-    const double factor = 1.0 / static_cast<double>(real.size());
-    for (std::size_t i = 0; i < real.size(); ++i) {
-        real[i] *= factor;
-        imag[i] *= factor;
-    }
-}
-
-void transformRadix2(std::vector<double>& real, std::vector<double>& imag)
-{
-    checkSameLength(real, imag, "wm::dsp::fft::transformRadix2");
-    const std::size_t n = real.size();
-    if (n == 0)
-        return;
-
     unsigned int levels = 0;
     for (std::size_t temp = n; temp > 1; temp >>= 1)
         ++levels;
-    if ((std::size_t{1} << levels) != n)
-        throwError("Length is not a power of 2.", "wm::dsp::fft::transformRadix2");
+    if (n != 0 && (std::size_t{1} << levels) != n)
+        throwError("Length is not a power of 2.", funcName);
+    return levels;
+}
 
-    std::vector<double> cosTable(n / 2);
-    std::vector<double> sinTable(n / 2);
-    for (std::size_t i = 0; i < n / 2; ++i) {
-        cosTable[i] = std::cos(2.0 * pi * i / n);
-        sinTable[i] = std::sin(2.0 * pi * i / n);
+unsigned int radix4Levels(std::size_t n, const std::string& funcName)
+{
+    unsigned int levels = 0;
+    for (std::size_t temp = n; temp > 1; temp /= 4) {
+        if (temp % 4 != 0)
+            throwError("Length is not a power of 4.", funcName);
+        ++levels;
     }
+    return levels;
+}
 
+void transformRadix2WithTables(std::vector<double>& real, std::vector<double>& imag,
+                               unsigned int levels,
+                               const std::vector<double>& cosTable,
+                               const std::vector<double>& sinTable)
+{
+    const std::size_t n = real.size();
     for (std::size_t i = 0, j = 0; i < n; ++i) {
         if (j > i) {
             std::swap(real[i], real[j]);
@@ -155,35 +98,22 @@ void transformRadix2(std::vector<double>& real, std::vector<double>& imag)
         if (size == n)
             break;
     }
+
+    (void)levels;
 }
 
-void transformRadix4(std::vector<double>& real, std::vector<double>& imag)
+void transformRadix4WithTables(std::vector<double>& real, std::vector<double>& imag,
+                               unsigned int levels,
+                               const std::vector<double>& cosTable,
+                               const std::vector<double>& sinTable)
 {
-    checkSameLength(real, imag, "wm::dsp::fft::transformRadix4");
     const std::size_t n = real.size();
-    if (n == 0)
-        return;
-
-    unsigned int levels = 0;
-    for (std::size_t temp = n; temp > 1; temp /= 4) {
-        if (temp % 4 != 0)
-            throwError("Length is not a power of 4.", "wm::dsp::fft::transformRadix4");
-        ++levels;
-    }
-
     for (std::size_t i = 0; i < n; ++i) {
         const std::size_t j = reverseBase4Digits(i, levels);
         if (j > i) {
             std::swap(real[i], real[j]);
             std::swap(imag[i], imag[j]);
         }
-    }
-
-    std::vector<double> cosTable(n);
-    std::vector<double> sinTable(n);
-    for (std::size_t i = 0; i < n; ++i) {
-        cosTable[i] = std::cos(2.0 * pi * i / n);
-        sinTable[i] = std::sin(2.0 * pi * i / n);
     }
 
     for (std::size_t size = 4; size <= n; size *= 4) {
@@ -233,6 +163,141 @@ void transformRadix4(std::vector<double>& real, std::vector<double>& imag)
         if (size == n)
             break;
     }
+}
+
+} // namespace
+
+namespace wm::dsp::fft {
+
+bool isPowerOfTwo(std::size_t n)
+{
+    return n != 0 && (n & (n - 1)) == 0;
+}
+
+bool isPowerOfFour(std::size_t n)
+{
+    if (n == 0)
+        return false;
+    while (n > 1) {
+        if (n % 4 != 0)
+            return false;
+        n /= 4;
+    }
+    return true;
+}
+
+Plan::Plan(std::size_t size, Algorithm algorithm) :
+    m_size(size),
+    m_algorithm(algorithm),
+    m_levels(0)
+{
+    if (m_size == 0)
+        return;
+
+    if (m_algorithm == Algorithm::Auto) {
+        if (isPowerOfFour(m_size))
+            m_algorithm = Algorithm::Radix4;
+        else if (isPowerOfTwo(m_size))
+            m_algorithm = Algorithm::Radix2;
+        else
+            m_algorithm = Algorithm::Bluestein;
+    }
+
+    if (m_algorithm == Algorithm::Radix2) {
+        m_levels = radix2Levels(m_size, "wm::dsp::fft::Plan");
+        m_cosTable.resize(m_size / 2);
+        m_sinTable.resize(m_size / 2);
+        for (std::size_t i = 0; i < m_size / 2; ++i) {
+            m_cosTable[i] = std::cos(2.0 * pi * i / m_size);
+            m_sinTable[i] = std::sin(2.0 * pi * i / m_size);
+        }
+    } else if (m_algorithm == Algorithm::Radix4) {
+        m_levels = radix4Levels(m_size, "wm::dsp::fft::Plan");
+        m_cosTable.resize(m_size);
+        m_sinTable.resize(m_size);
+        for (std::size_t i = 0; i < m_size; ++i) {
+            m_cosTable[i] = std::cos(2.0 * pi * i / m_size);
+            m_sinTable[i] = std::sin(2.0 * pi * i / m_size);
+        }
+    }
+}
+
+std::size_t Plan::size() const
+{
+    return m_size;
+}
+
+Algorithm Plan::algorithm() const
+{
+    return m_algorithm;
+}
+
+void Plan::transform(std::vector<double>& real, std::vector<double>& imag) const
+{
+    checkSameLength(real, imag, "wm::dsp::fft::Plan::transform");
+    if (real.size() != m_size)
+        throwError("Input length does not match plan size.", "wm::dsp::fft::Plan::transform");
+    if (m_size == 0)
+        return;
+
+    if (m_algorithm == Algorithm::Radix2)
+        transformRadix2WithTables(real, imag, m_levels, m_cosTable, m_sinTable);
+    else if (m_algorithm == Algorithm::Radix4)
+        transformRadix4WithTables(real, imag, m_levels, m_cosTable, m_sinTable);
+    else
+        transformBluestein(real, imag);
+}
+
+void Plan::inverseTransform(std::vector<double>& real, std::vector<double>& imag,
+                            bool scale) const
+{
+    checkSameLength(real, imag, "wm::dsp::fft::Plan::inverseTransform");
+    transform(imag, real);
+    if (!scale || real.empty())
+        return;
+
+    const double factor = 1.0 / static_cast<double>(real.size());
+    for (std::size_t i = 0; i < real.size(); ++i) {
+        real[i] *= factor;
+        imag[i] *= factor;
+    }
+}
+
+void transform(std::vector<double>& real, std::vector<double>& imag, Algorithm algorithm)
+{
+    checkSameLength(real, imag, "wm::dsp::fft::transform");
+    const std::size_t n = real.size();
+    if (n == 0)
+        return;
+
+    Plan(n, algorithm).transform(real, imag);
+}
+
+void inverseTransform(std::vector<double>& real, std::vector<double>& imag,
+                      bool scale, Algorithm algorithm)
+{
+    checkSameLength(real, imag, "wm::dsp::fft::inverseTransform");
+    Plan(real.size(), algorithm).inverseTransform(real, imag, scale);
+}
+
+void transformRadix2(std::vector<double>& real, std::vector<double>& imag)
+{
+    checkSameLength(real, imag, "wm::dsp::fft::transformRadix2");
+    const std::size_t n = real.size();
+    if (n == 0)
+        return;
+
+    Plan(n, Algorithm::Radix2).transform(real, imag);
+}
+
+void transformRadix4(std::vector<double>& real, std::vector<double>& imag)
+{
+    checkSameLength(real, imag, "wm::dsp::fft::transformRadix4");
+    const std::size_t n = real.size();
+    if (n == 0)
+        return;
+
+    Plan(n, Algorithm::Radix4).transform(real, imag);
 }
 
 void transformBluestein(std::vector<double>& real, std::vector<double>& imag)

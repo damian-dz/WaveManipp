@@ -201,6 +201,21 @@ wm::dsp::fft::transform(real, imag);            // in-place forward FFT
 wm::dsp::fft::inverseTransform(real, imag);     // scaled inverse FFT
 ```
 
+For repeated transforms of the same length, such as short-time Fourier transforms, create a reusable plan once and call it for each window. The plan caches Radix-2/Radix-4 trigonometric tables instead of rebuilding them every transform:
+
+```cpp
+const std::size_t windowSize = 4096;
+wm::dsp::fft::Plan plan(windowSize);
+
+std::vector<double> real(windowSize);
+std::vector<double> imag(windowSize);
+
+for (/* each analysis window */) {
+    // Fill real[] with windowed samples and clear imag[].
+    plan.transform(real, imag);
+}
+```
+
 For audio data, use `extractChannel()` when you need the complex bins, or `magnitudeSpectrum()` when a single-sided, amplitude-scaled spectrum is enough:
 
 ```cpp
