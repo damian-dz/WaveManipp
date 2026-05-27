@@ -453,7 +453,6 @@ std::vector<float> Wave::getSqueezedBuffer(uint32_t offset, uint32_t squeezedSam
                                            bool absolute, int channel, bool multiThreaded) const
 {
     std::vector<float> squeezedBuffer(squeezedSampleCount);
-    uint32_t sampleCount = uint32_t(roundf(squeezedSampleCount * squeezeFactor));
     uint16_t numChannels = m_waveProperties.getNumChannels();
     uint32_t absoluteOffset = numChannels * offset;
     #pragma omp parallel for if (multiThreaded)
@@ -463,11 +462,11 @@ std::vector<float> Wave::getSqueezedBuffer(uint32_t offset, uint32_t squeezedSam
         float sum = 0.f;
         if (!absolute) {
             for (int32_t j = current; j < next; j += numChannels) {
-                sum += m_pData[absoluteOffset + j];
+                sum += m_pData[absoluteOffset + j + channel];
             }
         } else {
             for (int32_t j = current; j < next; j += numChannels) {
-                sum += fabs(m_pData[absoluteOffset + j]);
+                sum += fabs(m_pData[absoluteOffset + j + channel]);
             }
         }
         squeezedBuffer[i] = sum * numChannels / (next - current);

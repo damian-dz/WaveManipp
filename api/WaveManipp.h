@@ -7,5 +7,6 @@
 #include "WaveMixer.hpp"
 #include "RecordingBuffer.hpp"
 #include "Dsp.hpp"
+#include "Fft.hpp"
 
 #endif // !WAVE_MANIPP_H

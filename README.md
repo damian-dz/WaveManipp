@@ -11,6 +11,7 @@
 * [The `WaveBuilder` Class](#the-wavebuilder-class)
 * [The `WaveMixer` Class](#the-wavemixer-class)
 * [The `wm::dsp` Namespace](#the-wmdsp-namespace)
+  * [FFT Helpers](#fft-helpers)
 
 ## Compiling from Source
 
@@ -185,5 +186,28 @@ wm::dsp::reverseChannel(wave, 0);                       // reverse left channel 
 ```
 
 All range functions clamp `endFrame` to `wave.getNumFrames()` and are no-ops if the wave is empty or `startFrame >= endFrame`.
+
+### FFT Helpers
+
+WaveManipp also includes vector-based FFT and convolution utilities in `wm::dsp::fft` (`Fft.hpp` / `Fft.cpp`). The automatic transform path chooses Radix-4 for power-of-4 lengths, Radix-2 for other power-of-2 lengths, and Bluestein for arbitrary lengths.
+
+```cpp
+#include <WaveManipp.h>
+
+std::vector<double> real = { 1.0, 0.0, -1.0, 0.0 };
+std::vector<double> imag(real.size(), 0.0);
+
+wm::dsp::fft::transform(real, imag);            // in-place forward FFT
+wm::dsp::fft::inverseTransform(real, imag);     // scaled inverse FFT
+```
+
+For audio data, use `extractChannel()` when you need the complex bins, or `magnitudeSpectrum()` when a single-sided, amplitude-scaled spectrum is enough:
+
+```cpp
+wm::Wave wave("audio.wav");
+
+std::vector<double> spectrum =
+    wm::dsp::fft::magnitudeSpectrum(wave, 0, 0, 4096);
+```
 
 #### [Back to Table of Contents](#table-of-contents)
