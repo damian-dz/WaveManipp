@@ -30,6 +30,26 @@ enum class FadeCurve { Linear, Logarithmic };
 void fadeIn (Wave& wave, uint32_t startFrame, uint32_t endFrame, FadeCurve curve = FadeCurve::Logarithmic);
 void fadeOut(Wave& wave, uint32_t startFrame, uint32_t endFrame, FadeCurve curve = FadeCurve::Logarithmic);
 
+// ---- Short-time Fourier transform ------------------------------------------
+
+enum class WindowFunction {
+    Rectangular,
+    Hann,
+    Hamming,
+    Blackman
+};
+
+struct StftConfig {
+    size_t windowSize = 2048;
+    size_t hopSize = 512;
+    WindowFunction window = WindowFunction::Hann;
+    int channel = 0;
+    float floorDb = -120.f;
+};
+
+std::vector<float> makeWindow(size_t windowSize, WindowFunction window);
+std::vector<std::vector<float>> stftMagnitudeDb(const Wave& wave, const StftConfig& config = {});
+
 // ---- Reverse ----------------------------------------------------------------
 
 void reverseChannel(Wave& wave, int channel);

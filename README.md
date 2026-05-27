@@ -183,6 +183,13 @@ wm::dsp::fadeOut(wave, wave.getNumFrames() - 44100, wave.getNumFrames());
 // Reverse
 wm::dsp::reverse(wave);                                 // reverse all channels
 wm::dsp::reverseChannel(wave, 0);                       // reverse left channel only
+
+// STFT data for spectrogram drawing
+wm::dsp::StftConfig stft;
+stft.windowSize = 2048;
+stft.hopSize = 512;
+stft.channel = 0;
+auto magnitudeDb = wm::dsp::stftMagnitudeDb(wave, stft); // [time frame][frequency bin]
 ```
 
 All range functions clamp `endFrame` to `wave.getNumFrames()` and are no-ops if the wave is empty or `startFrame >= endFrame`.

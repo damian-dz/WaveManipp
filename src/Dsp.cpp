@@ -1,6 +1,8 @@
 #include "Dsp.hpp"
+#include "Fft.hpp"
 #include <cmath>
 #include <algorithm>
+#include <limits>
 
 namespace wm::dsp {
 
@@ -109,6 +111,82 @@ void fadeOut(Wave& wave, uint32_t startFrame, uint32_t endFrame, FadeCurve curve
         for (uint16_t ch = 0; ch < nc; ++ch)
             wave(fr, static_cast<int>(ch)) *= gain;
     }
+}
+
+std::vector<float> makeWindow(size_t windowSize, WindowFunction window)
+{
+    std::vector<float> result(windowSize, 1.f);
+    if (windowSize <= 1 || window == WindowFunction::Rectangular)
+        return result;
+
+    constexpr double pi = 3.141592653589793238462643383279502884;
+    const double denom = static_cast<double>(windowSize - 1);
+    for (size_t i = 0; i < windowSize; ++i) {
+        const double phase = 2.0 * pi * static_cast<double>(i) / denom;
+        switch (window) {
+        case WindowFunction::Rectangular:
+            result[i] = 1.f;
+            break;
+        case WindowFunction::Hann:
+            result[i] = static_cast<float>(0.5 - 0.5 * std::cos(phase));
+            break;
+        case WindowFunction::Hamming:
+            result[i] = static_cast<float>(0.54 - 0.46 * std::cos(phase));
+            break;
+        case WindowFunction::Blackman:
+            result[i] = static_cast<float>(0.42 - 0.5 * std::cos(phase) + 0.08 * std::cos(2.0 * phase));
+            break;
+        }
+    }
+    return result;
+}
+
+std::vector<std::vector<float>> stftMagnitudeDb(const Wave& wave, const StftConfig& config)
+{
+    if (wave.isEmpty())
+        return {};
+    if (config.windowSize == 0)
+        throwError("Window size must be greater than zero.", "wm::dsp::stftMagnitudeDb");
+    if (config.hopSize == 0)
+        throwError("Hop size must be greater than zero.", "wm::dsp::stftMagnitudeDb");
+    if (config.channel < 0 || config.channel >= static_cast<int>(wave.getNumChannels()))
+        throwError("Channel index out of range.", "wm::dsp::stftMagnitudeDb");
+
+    const uint32_t numFrames = wave.getNumFrames();
+    if (numFrames < config.windowSize)
+        return {};
+
+    const size_t numWindows = 1 + (static_cast<size_t>(numFrames) - config.windowSize) / config.hopSize;
+    const size_t numBins = config.windowSize / 2 + 1;
+    const auto window = makeWindow(config.windowSize, config.window);
+    fft::Plan plan(config.windowSize);
+
+    std::vector<std::vector<float>> result(numWindows, std::vector<float>(numBins));
+    std::vector<double> real(config.windowSize);
+    std::vector<double> imag(config.windowSize);
+    const float floorDb = std::min(config.floorDb, 0.f);
+    const double epsilon = std::pow(10.0, static_cast<double>(floorDb) / 20.0);
+
+    for (size_t frame = 0; frame < numWindows; ++frame) {
+        const uint32_t startFrame = static_cast<uint32_t>(frame * config.hopSize);
+        std::fill(imag.begin(), imag.end(), 0.0);
+        for (size_t i = 0; i < config.windowSize; ++i)
+            real[i] = static_cast<double>(wave(startFrame + static_cast<uint32_t>(i), config.channel)) * window[i];
+
+        plan.transform(real, imag);
+
+        for (size_t bin = 0; bin < numBins; ++bin) {
+            const double magnitude = std::sqrt(real[bin] * real[bin] + imag[bin] * imag[bin]) /
+                                     static_cast<double>(config.windowSize);
+            const double singleSided = (bin == 0 || (config.windowSize % 2 == 0 && bin == numBins - 1))
+                ? magnitude
+                : 2.0 * magnitude;
+            const double db = 20.0 * std::log10(std::max(singleSided, epsilon));
+            result[frame][bin] = static_cast<float>(std::max(db, static_cast<double>(floorDb)));
+        }
+    }
+
+    return result;
 }
 
 void reverseChannel(Wave& wave, int channel)
