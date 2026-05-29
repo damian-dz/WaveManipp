@@ -8,8 +8,7 @@ namespace wm {
  */
 Wave::Wave() :
     m_isLittleEndian(true),
-    m_numSamples(0),
-    m_pData(nullptr)
+    m_numSamples(0)
 {
     zeroInitHeader();
 }
@@ -20,8 +19,7 @@ Wave::Wave() :
  */
 Wave::Wave(const char* filename) :
     m_isLittleEndian(true),
-    m_numSamples(0),
-    m_pData(nullptr)
+    m_numSamples(0)
 {
     zeroInitHeader();
     open(filename);
@@ -33,8 +31,7 @@ Wave::Wave(const char* filename) :
  */
 Wave::Wave(const std::string& filename) :
     m_isLittleEndian(true),
-    m_numSamples(0),
-    m_pData(nullptr)
+    m_numSamples(0)
 {
     zeroInitHeader();
     open(filename);
@@ -42,8 +39,7 @@ Wave::Wave(const std::string& filename) :
 
 Wave::Wave(uint32_t numFrames, uint16_t numChannels, uint16_t bitDepth, uint32_t sampleRate) :
     m_isLittleEndian(true),
-    m_numSamples(numChannels * numFrames),
-    m_pData(nullptr)
+    m_numSamples(numChannels * numFrames)
 {
     zeroInitHeader();
     setFourCharacterCodes();
@@ -56,7 +52,7 @@ Wave::Wave(uint32_t numFrames, uint16_t numChannels, uint16_t bitDepth, uint32_t
 }
 
 /*!
- * \brief Creates a deep copy of the input Wave object.
+ * \brief Shares the audio buffer with the other Wave object (O(1), no copy).
  * \param other &mdash; the object to copy
  */
 Wave::Wave(const Wave& other) :
@@ -64,26 +60,14 @@ Wave::Wave(const Wave& other) :
     m_dataSubChunk(other.m_dataSubChunk),
     m_isLittleEndian(other.m_isLittleEndian),
     m_numSamples(other.m_numSamples),
+    m_buffer(other.m_buffer),
     m_waveProperties(other.m_waveProperties)
-{
-    if (other.m_pData != nullptr) {
-        reserveMemory(other.m_numSamples);
-        copySamples(other.m_pData, m_pData, m_numSamples);
-    } else {
-        m_pData = nullptr;
-    }
-}
+{}
 
 /*!
- * \brief Destroys the Wave object and frees its associated resources.
+ * \brief Destroys the Wave object. The audio buffer is freed when the last owner is destroyed.
  */
-Wave::~Wave()
-{
-    if (m_pData != nullptr) {
-        std::free(m_pData);
-        m_pData = nullptr;
-    }
-}
+Wave::~Wave() = default;
 
 void Wave::setFourCharacterCodes()
 {
@@ -177,31 +161,36 @@ void Wave::setWaveProperties(bool onlyDataChunk)
 }
 
 /*!
- * \brief Reserves enough memory to store the specigfied number of samples using floating-point format.
+ * \brief Detaches from a shared buffer by making a private copy.
+ */
+void Wave::detach()
+{
+    if (m_buffer && m_buffer.use_count() > 1) {
+        auto copy = std::shared_ptr<float[]>(new float[m_numSamples]);
+        std::memcpy(copy.get(), m_buffer.get(), m_numSamples * sizeof(float));
+        m_buffer = std::move(copy);
+    }
+}
+
+/*!
+ * \brief Reserves enough memory to store the specified number of samples using floating-point format.
  * \param numSamples &mdash; the number of samples
  * \param zeroInit &mdash; specifies if memory should be set to zero
  */
 void Wave::reserveMemory(uint32_t numSamples, bool zeroInit)
 {
     if (numSamples == 0) {
-        std::free(m_pData);
-        m_pData = nullptr;
+        m_buffer.reset();
         return;
     }
-
-    if (!zeroInit) {
-        m_pData = reinterpret_cast<float*>(std::malloc(numSamples * sizeof(float)));
-    } else {
-        m_pData = reinterpret_cast<float*>(std::calloc(numSamples, sizeof(float)));
-    }
-    if (m_pData == nullptr) {
-        throwError("Failed to reserve memory.",
-                   "Wave::reserveMemory(uint32_t, bool)");
+    m_buffer = std::shared_ptr<float[]>(new float[numSamples]);
+    if (zeroInit) {
+        std::memset(m_buffer.get(), 0, numSamples * sizeof(float));
     }
 }
 
 /*!
- * \brief Resizes the block of memory to accomodate the specified number of samples using floating-point format.
+ * \brief Resizes the block of memory to accommodate the specified number of samples using floating-point format.
  * \param numSamples &mdash; the new number of samples
  * \param zeroInit &mdash; specifies if any additional memory should be set to zero
  */
@@ -216,18 +205,16 @@ void Wave::resizeMemory(uint32_t numSamples, bool zeroInit)
     m_waveProperties.setDataChunkSize(numSamples * m_waveProperties.getNumBitsPerSample() / 8);
     m_waveProperties.setRiffChunkSize(m_waveProperties.getDataChunkSize() + 36);
     if (numSamples == 0) {
-        std::free(m_pData);
-        m_pData = nullptr;
+        m_buffer.reset();
     } else {
-        float* pNewData = reinterpret_cast<float*>(std::realloc(m_pData, numSamples * sizeof(float)));
-        if (pNewData == nullptr) {
-            throwError("Failed to reallocate memory.",
-                       "Wave::resizeMemory(uint32_t, bool)");
+        auto newBuffer = std::shared_ptr<float[]>(new float[numSamples]);
+        if (m_buffer && count > 0) {
+            std::memcpy(newBuffer.get(), m_buffer.get(), count * sizeof(float));
         }
-        m_pData = pNewData;
-        if (zeroInit) {
-            std::memset(&m_pData[count], 0, (numSamples - count) * sizeof(float));
+        if (zeroInit && numSamples > count) {
+            std::memset(newBuffer.get() + count, 0, (numSamples - count) * sizeof(float));
         }
+        m_buffer = std::move(newBuffer);
     }
 }
 
@@ -301,7 +288,7 @@ void Wave::open(const char* filename, uint32_t bufferSize)
 
     m_numSamples = m_waveProperties.getDataChunkSize() / (m_waveProperties.getNumBitsPerSample() / 8);
     reserveMemory(m_numSamples);
-    if (m_pData != nullptr) {
+    if (m_buffer) {
         readData(pFile, bufferSize);
     }
     std::fclose(pFile);
@@ -337,6 +324,7 @@ void Wave::readData(std::FILE* file, uint32_t bufferSize)
                    "Wave::readData(std::FILE*, uint32_t)");
     }
 
+    float* dst = m_buffer.get();
     uint32_t offset = 0;
     if (sampleBitDepth == 8) {
         while (offset < numSamples) {
@@ -346,7 +334,7 @@ void Wave::readData(std::FILE* file, uint32_t bufferSize)
             for (uint32_t y = 0; y < numBufferFrames; ++y) {
                 for (uint16_t x = 0; x < numChannels; ++x) {
                     uint32_t i = y * numChannels + x;
-                    m_pData[offset + i] = pBuffer[i] / 127.5f - 1.f;
+                    dst[offset + i] = pBuffer[i] / 127.5f - 1.f;
                 }
             }
             offset += bufferSize;
@@ -363,7 +351,7 @@ void Wave::readData(std::FILE* file, uint32_t bufferSize)
             for (uint32_t y = 0; y < numBufferFrames; ++y) {
                 for (uint16_t x = 0; x < numChannels; ++x) {
                     uint32_t i = y * numChannels + x;
-                    m_pData[offset + i] = pI16Buffer[i] / 32768.f;
+                    dst[offset + i] = pI16Buffer[i] / 32768.f;
                 }
             }
             offset += bufferSize / 2;
@@ -379,7 +367,7 @@ void Wave::readData(std::FILE* file, uint32_t bufferSize)
             for (uint32_t y = 0; y < numBufferFrames; ++y) {
                 for (uint16_t x = 0; x < numChannels; ++x) {
                     uint32_t i = 3 * (y * numChannels + x);
-                    m_pData[offset + i / 3] =
+                    dst[offset + i / 3] =
                         (pBuffer[i] << 8 | pBuffer[i + 1] << 16 | pBuffer[i + 2] << 24) / 2147483648.f;
                 }
             }
@@ -394,7 +382,7 @@ void Wave::readData(std::FILE* file, uint32_t bufferSize)
             }
             uint32_t numBufferFrames = numBytesToRead / frameSize;
             float* pF32Buffer = reinterpret_cast<float*>(pBuffer);
-            copySamples(pF32Buffer, m_pData, numBufferFrames * numChannels, 0, offset);
+            copySamples(pF32Buffer, dst, numBufferFrames * numChannels, 0, offset);
             offset += bufferSize / 4;
         }
     } else {
@@ -411,16 +399,17 @@ void Wave::readData(std::FILE* file, uint32_t bufferSize)
  */
 const float* Wave::constAudioData() const
 {
-    return m_pData;
+    return m_buffer.get();
 }
 
 /*!
- * \brief Provides a pointer to the underlying audio data.
+ * \brief Provides a mutable pointer to the underlying audio data. Detaches from any shared buffer first.
  * \result A pointer to the audio data.
  */
-float* Wave::audioData() const
+float* Wave::audioData()
 {
-    return m_pData;
+    detach();
+    return m_buffer.get();
 }
 
 /*!
@@ -436,7 +425,7 @@ std::vector<float> Wave::getBuffer(uint32_t offset, uint32_t sampleCount, int ch
     uint16_t numChannels = m_waveProperties.getNumChannels();
     uint32_t absoluteOffset = numChannels * offset;
     for (uint32_t i = channel; i < sampleCount * numChannels; i += numChannels) {
-        buffer[i / numChannels] = m_pData[absoluteOffset + i];
+        buffer[i / numChannels] = m_buffer[absoluteOffset + i];
     }
     return buffer;
 }
@@ -462,11 +451,11 @@ std::vector<float> Wave::getSqueezedBuffer(uint32_t offset, uint32_t squeezedSam
         float sum = 0.f;
         if (!absolute) {
             for (int32_t j = current; j < next; j += numChannels) {
-                sum += m_pData[absoluteOffset + j + channel];
+                sum += m_buffer[absoluteOffset + j + channel];
             }
         } else {
             for (int32_t j = current; j < next; j += numChannels) {
-                sum += fabs(m_pData[absoluteOffset + j + channel]);
+                sum += fabs(m_buffer[absoluteOffset + j + channel]);
             }
         }
         squeezedBuffer[i] = sum * numChannels / (next - current);
@@ -478,7 +467,7 @@ std::vector<float> Wave::getSqueezedBuffer(uint32_t offset, uint32_t squeezedSam
  * \brief Fetches a stretched buffer from the Wave object as a vector of floating-point values.
  * \param offset &mdash; the sample offset for the specified channel
  * \param squeezedSampleCount &mdash; the number of samples after stretching
- * \param squeezeFactor &mdash; the ratio between the stretched sample count and the original sample count 
+ * \param squeezeFactor &mdash; the ratio between the stretched sample count and the original sample count
  * \param channel &mdash; the index of the channel
  * \result An std::vector of floating-point values.
  */
@@ -493,8 +482,8 @@ std::vector<float> Wave::getStretchedBuffer(uint32_t offset, uint32_t stretchedS
         uint32_t current = uint32_t(roundf(i / numChannels * stretchFactor));
         uint32_t next = uint32_t(roundf((i + numChannels) / numChannels * stretchFactor));
         for (uint32_t j = current; j < next; ++j) {
-            if (j < stretchedSampleCount) { // maybe can be improved
-                stretchedBuffer[j] = m_pData[absoluteOffset + i + channel];
+            if (j < stretchedSampleCount) {
+                stretchedBuffer[j] = m_buffer[absoluteOffset + i + channel];
             }
         }
     }
@@ -505,10 +494,10 @@ float Wave::getAbsPeak(int channel) const
 {
     if (getNumFrames() > 1) {
         uint16_t numChannels = m_waveProperties.getNumChannels();
-        float max = m_pData[channel];
+        float max = m_buffer[channel];
         for (uint32_t i = channel + numChannels; i < m_numSamples; i += numChannels) {
-            if (fabs(m_pData[i]) > max) {
-                max = fabs(m_pData[i]);
+            if (fabs(m_buffer[i]) > max) {
+                max = fabs(m_buffer[i]);
             }
         }
         return max;
@@ -518,7 +507,8 @@ float Wave::getAbsPeak(int channel) const
 
 void Wave::insertAudio(uint32_t offset, const float* audio, uint32_t numSamples)
 {
-    std::memcpy(&m_pData[offset], audio, numSamples * sizeof(float));
+    detach();
+    std::memcpy(m_buffer.get() + offset, audio, numSamples * sizeof(float));
 }
 
 void Wave::insertAudio(uint32_t offset, std::vector<float>& audio)
@@ -528,7 +518,7 @@ void Wave::insertAudio(uint32_t offset, std::vector<float>& audio)
 
 bool Wave::isEmpty() const
 {
-    return (m_pData == nullptr || m_numSamples == 0);
+    return (!m_buffer || m_numSamples == 0);
 }
 
 /*!
@@ -543,14 +533,14 @@ Wave& Wave::append(const Wave& other)
     if (other.getNumChannels() == getNumChannels()) {
         uint32_t numSamples = m_numSamples;
         resizeMemory(numSamples + other.getNumSamples());
-        copySamples(other.m_pData, m_pData, other.m_numSamples, 0, numSamples);
+        copySamples(other.m_buffer.get(), m_buffer.get(), other.m_numSamples, 0, numSamples);
     } else if (!isMono() && other.isMono()) {
         uint32_t numSamples = m_numSamples;
         uint16_t numChannels = getNumChannels();
         resizeMemory(numSamples + other.getNumSamples() * numChannels);
         for (uint32_t y = numSamples; y < m_numSamples; y += numChannels) {
             for (uint16_t x = 0; x < numChannels; ++x) {
-                m_pData[y + x] = other.m_pData[(y - numSamples) / numChannels];
+                m_buffer[y + x] = other.m_buffer[(y - numSamples) / numChannels];
             }
         }
     }
@@ -562,18 +552,19 @@ float Wave::avgValue(int channel) const
     uint16_t numChannels = m_waveProperties.getNumChannels();
     double sum = 0.;
     for (uint32_t i = channel + numChannels; i < m_numSamples; i += numChannels) {
-        sum += double(m_pData[i]);
+        sum += double(m_buffer[i]);
     }
     return float(sum / getNumFrames());
 }
 
 void Wave::changeVolume(float volume, int channel)
 {
+    detach();
     uint16_t numChannels = m_waveProperties.getNumChannels();
     float max = getAbsPeak(channel);
     float factor = volume / max;
     for (uint32_t i = channel; i < m_numSamples; i += numChannels) {
-        m_pData[i] *= factor;
+        m_buffer[i] *= factor;
     }
 }
 
@@ -586,24 +577,21 @@ void Wave::downmixToMono()
     uint16_t numChannels = m_waveProperties.getNumChannels();
     uint32_t newDataChunkSize = m_waveProperties.getDataChunkSize() / numChannels;
     uint32_t newNumSamples = m_numSamples / numChannels;
-    float* pNewData = reinterpret_cast<float*>(std::malloc(newNumSamples * sizeof(float)));
-    if (pNewData != nullptr) {
-        for (uint32_t y = 0; y < numSamples; y += numChannels) {
-            float sum = 0.f;
-            for (uint16_t x = 0; x < numChannels; ++x) {
-                sum += m_pData[y + x];
-            }
-            pNewData[y / numChannels] = sum / float(numChannels);
+    auto newBuffer = std::shared_ptr<float[]>(new float[newNumSamples]);
+    for (uint32_t y = 0; y < numSamples; y += numChannels) {
+        float sum = 0.f;
+        for (uint16_t x = 0; x < numChannels; ++x) {
+            sum += m_buffer[y + x];
         }
-        std::free(m_pData);
-        m_pData = pNewData;
-        m_waveProperties.setBlockAlign(m_waveProperties.getBlockAlign() / numChannels);
-        m_waveProperties.setNumBytesPerSecond(m_waveProperties.getNumBytesPerSecond() / numChannels);
-        m_waveProperties.setRiffChunkSize(newDataChunkSize + 36);
-        m_waveProperties.setDataChunkSize(newDataChunkSize);
-        m_waveProperties.setNumChannels(1);
-        m_numSamples = newNumSamples;
+        newBuffer[y / numChannels] = sum / float(numChannels);
     }
+    m_buffer = std::move(newBuffer);
+    m_waveProperties.setBlockAlign(m_waveProperties.getBlockAlign() / numChannels);
+    m_waveProperties.setNumBytesPerSecond(m_waveProperties.getNumBytesPerSecond() / numChannels);
+    m_waveProperties.setRiffChunkSize(newDataChunkSize + 36);
+    m_waveProperties.setDataChunkSize(newDataChunkSize);
+    m_waveProperties.setNumChannels(1);
+    m_numSamples = newNumSamples;
 }
 
 Wave Wave::randomFromDuration(float duration, uint16_t bitDepth, uint32_t sampleRate)
@@ -618,7 +606,7 @@ Wave Wave::generateRandom(uint32_t numFrames, uint16_t bitDepth, uint32_t sample
     std::mt19937 gen(rd());
     std::uniform_real_distribution<float> dis(-1.f, 1.f - std::numeric_limits<float>::epsilon());
     for (uint32_t i = 0; i < numFrames; ++i) {
-        result.m_pData[i] = dis(gen);
+        result.m_buffer[i] = dis(gen);
     }
     return result;
 }
@@ -640,7 +628,7 @@ Wave Wave::generateSine(float waveFreq, float phaseShift, uint32_t numFrames,
     float omega = 2 * 3.1415927f * waveFreq;
     #pragma omp parallel for if(multiThreaded)
     for (int32_t i = 0; i < int32_t(numFrames); ++i) {
-        result.m_pData[i] = coeff * sinf(omega * (i * timeStep + phaseShift));
+        result.m_buffer[i] = coeff * sinf(omega * (i * timeStep + phaseShift));
     }
     return result;
 }
@@ -662,7 +650,7 @@ Wave Wave::generateSquare(float waveFreq, float phaseShift, uint32_t samplingFre
     constexpr float coeff = 1.f - std::numeric_limits<float>::epsilon();
     #pragma omp parallel for if(multiThreaded)
     for (int32_t i = 0; i < int32_t(numFrames); ++i) {
-        result.m_pData[i] = sinf(omega * (i * timeStep + phaseShift)) < 0 ? -1.f * coeff : 1.f * coeff;
+        result.m_buffer[i] = sinf(omega * (i * timeStep + phaseShift)) < 0 ? -1.f * coeff : 1.f * coeff;
     }
     return result;
 }
@@ -685,7 +673,7 @@ Wave Wave::generateTriangle(float waveFreq, float phaseShift, uint32_t samplingF
     float omega = 2 * pi * waveFreq;
     #pragma omp parallel for if(multiThreaded)
     for (int32_t i = 0; i < int32_t(numFrames); ++i) {
-        result.m_pData[i] = coeff * asinf(sinf(omega * (i * timeStep + phaseShift)));
+        result.m_buffer[i] = coeff * asinf(sinf(omega * (i * timeStep + phaseShift)));
     }
     return result;
 }
@@ -710,11 +698,11 @@ std::vector<float> Wave::getAveragedOutData(uint32_t binSize, bool absolute, int
         }
         if (!absolute) {
             for (uint32_t j = channel; j < endPoint; j += numChannels) {
-                sum += double(m_pData[i * binSize * numChannels + j]);
+                sum += double(m_buffer[i * binSize * numChannels + j]);
             }
         } else {
             for (uint32_t j = channel; j < endPoint; j += numChannels) {
-                sum += double(std::fabs(m_pData[i * binSize * numChannels + j]));
+                sum += double(std::fabs(m_buffer[i * binSize * numChannels + j]));
             }
         }
         result[i] = float(sum / binSize);
@@ -741,10 +729,10 @@ float Wave::maxValue(int channel) const
     uint16_t numChannels = m_waveProperties.getNumChannels();
     float max = 0.f;
     if (getNumFrames() > 1) {
-        max = m_pData[channel];
+        max = m_buffer[channel];
         for (uint32_t i = channel + numChannels; i < m_numSamples; i += numChannels) {
-            if (m_pData[i] > max) {
-                max = m_pData[i];
+            if (m_buffer[i] > max) {
+                max = m_buffer[i];
             }
         }
     }
@@ -756,10 +744,10 @@ float Wave::minValue(int channel) const
     uint16_t numChannels = m_waveProperties.getNumChannels();
     float min = 0.f;
     if (getNumFrames() > 1) {
-        min = m_pData[channel];
+        min = m_buffer[channel];
         for (uint32_t i = channel + numChannels; i < m_numSamples; i += numChannels) {
-            if (m_pData[i] < min) {
-                min = m_pData[i];
+            if (m_buffer[i] < min) {
+                min = m_buffer[i];
             }
         }
     }
@@ -768,6 +756,7 @@ float Wave::minValue(int channel) const
 
 void Wave::reverse(int channel)
 {
+    detach();
     dsp::reverseChannel(*this, channel);
 }
 
@@ -794,7 +783,7 @@ Wave Wave::resample(uint32_t targetSampleRate) const
     if (srcFrames == 1) {
         for (uint32_t i = 0; i < dstFrames; ++i) {
             for (uint16_t ch = 0; ch < channels; ++ch) {
-                dst[i * channels + ch] = m_pData[ch];
+                dst[i * channels + ch] = m_buffer[ch];
             }
         }
         return result;
@@ -809,8 +798,8 @@ Wave Wave::resample(uint32_t targetSampleRate) const
         const float frac = static_cast<float>(srcPos - i0);
 
         for (uint16_t ch = 0; ch < channels; ++ch) {
-            const float a = m_pData[i0 * channels + ch];
-            const float b = m_pData[i1 * channels + ch];
+            const float a = m_buffer[i0 * channels + ch];
+            const float b = m_buffer[i1 * channels + ch];
             dst[i * channels + ch] = a + (b - a) * frac;
         }
     }
@@ -822,11 +811,13 @@ void Wave::setAudio(const float* audio, uint32_t numSamples)
 {
     if (numSamples != m_numSamples) {
         resizeMemory(numSamples, false);
+    } else {
+        detach();
     }
     if (numSamples == 0 || audio == nullptr) {
         return;
     }
-    std::memcpy(m_pData, audio, m_numSamples * sizeof(float));
+    std::memcpy(m_buffer.get(), audio, m_numSamples * sizeof(float));
 }
 
 void Wave::setAudio(std::vector<float>& audio)
@@ -841,6 +832,7 @@ void Wave::setLittleEndian(bool isLittleEndian)
 
 void Wave::swapChannels(int from, int to)
 {
+    detach();
     uint32_t numSamples = getNumSamples();
     uint16_t numChannels = getNumChannels();
     if (numChannels < 2) {
@@ -851,9 +843,9 @@ void Wave::swapChannels(int from, int to)
     int idx2 = std::max(from, to);
     int offset = idx2 - idx1;
     for (uint32_t i = idx1; i < numSamples; i += numChannels) {
-        float sample = m_pData[i];
-        m_pData[i] = m_pData[i + offset];
-        m_pData[i + offset] = sample;
+        float sample = m_buffer[i];
+        m_buffer[i] = m_buffer[i + offset];
+        m_buffer[i + offset] = sample;
     }
 }
 
@@ -867,22 +859,19 @@ void Wave::upmixToStereo()
     uint32_t newDataChunkSize = m_waveProperties.getDataChunkSize() * numChannels;
     uint32_t newNumSamples = m_numSamples * numChannels;
     std::cout << newNumSamples << std::endl;
-    float* pNewData = reinterpret_cast<float*>(std::malloc(newNumSamples * sizeof(float)));
-    if (pNewData != nullptr) {
-        for (uint32_t y = 0; y < numSamples; ++y) {
-            for (uint16_t x = 0; x < numChannels; ++x) {
-                pNewData[y * numChannels + x] = m_pData[y];
-            }
+    auto newBuffer = std::shared_ptr<float[]>(new float[newNumSamples]);
+    for (uint32_t y = 0; y < numSamples; ++y) {
+        for (uint16_t x = 0; x < numChannels; ++x) {
+            newBuffer[y * numChannels + x] = m_buffer[y];
         }
-        std::free(m_pData);
-        m_pData = pNewData;
-        m_waveProperties.setBlockAlign(m_waveProperties.getBlockAlign() * numChannels);
-        m_waveProperties.setNumBytesPerSecond(m_waveProperties.getNumBytesPerSecond() * numChannels);
-        m_waveProperties.setRiffChunkSize(newDataChunkSize + 36);
-        m_waveProperties.setDataChunkSize(newDataChunkSize);
-        m_waveProperties.setNumChannels(numChannels);
-        m_numSamples = newNumSamples;
     }
+    m_buffer = std::move(newBuffer);
+    m_waveProperties.setBlockAlign(m_waveProperties.getBlockAlign() * numChannels);
+    m_waveProperties.setNumBytesPerSecond(m_waveProperties.getNumBytesPerSecond() * numChannels);
+    m_waveProperties.setRiffChunkSize(newDataChunkSize + 36);
+    m_waveProperties.setDataChunkSize(newDataChunkSize);
+    m_waveProperties.setNumChannels(numChannels);
+    m_numSamples = newNumSamples;
 }
 
 void Wave::zeroInitHeader()
@@ -976,6 +965,7 @@ void Wave::writeData(std::FILE* file, uint32_t bufferSize)
                    "Wave::readData(std::FILE*, uint32_t)");
     }
 
+    const float* src = m_buffer.get();
     bool isEndiannessMismatched = isCpuBigEndian() == m_isLittleEndian;
     uint32_t offset = 0;
     if (sampleBitDepth == 8) {
@@ -985,7 +975,7 @@ void Wave::writeData(std::FILE* file, uint32_t bufferSize)
             for (uint32_t y = 0; y < numBufferFrames; ++y) {
                 for (uint16_t x = 0; x < numChannels; ++x) {
                     int i = y * numChannels + x;
-                    pBuffer[i] = uint8_t(roundf((m_pData[offset + i] + 1.f) * 127.5f));
+                    pBuffer[i] = uint8_t(roundf((src[offset + i] + 1.f) * 127.5f));
                 }
             }
             std::fwrite(pBuffer, 1, numBytesToWrite, file);
@@ -999,7 +989,7 @@ void Wave::writeData(std::FILE* file, uint32_t bufferSize)
             for (uint32_t y = 0; y < numBufferFrames; ++y) {
                 for (uint16_t x = 0; x < numChannels; ++x) {
                     uint32_t i = y * numChannels + x;
-                    pI16Buffer[i] = int16_t(m_pData[offset + i] * 32768.f);
+                    pI16Buffer[i] = int16_t(src[offset + i] * 32768.f);
                 }
             }
             if (isEndiannessMismatched) {
@@ -1015,7 +1005,7 @@ void Wave::writeData(std::FILE* file, uint32_t bufferSize)
             for (uint32_t y = 0; y < numBufferFrames; ++y) {
                 for (uint16_t x = 0; x < numChannels; ++x) {
                     uint32_t i = 3 * (y * numChannels + x);
-                    int val = int(m_pData[offset + i / 3] * 2147483648.f);
+                    int val = int(src[offset + i / 3] * 2147483648.f);
                     pBuffer[i] = uint8_t(val >> 8);
                     pBuffer[i + 1] = uint8_t(val >> 16);
                     pBuffer[i + 2] = uint8_t(val >> 24);
@@ -1032,7 +1022,7 @@ void Wave::writeData(std::FILE* file, uint32_t bufferSize)
             uint32_t numBytesToWrite = std::min(bufferSize, dataChunkSize - 4 * offset);
             uint32_t numBufferFrames = numBytesToWrite / frameSize;
             float* pF32Buffer = reinterpret_cast<float*>(pBuffer);
-            copySamples(m_pData, pF32Buffer, numBufferFrames * numChannels, offset, 0);
+            copySamples(src, pF32Buffer, numBufferFrames * numChannels, offset, 0);
             if (isEndiannessMismatched) {
                 changeBufferEndianness(pBuffer, 4, numBytesToWrite);
             }
@@ -1068,12 +1058,13 @@ void Wave::setSampleRate(uint32_t sampleRate)
 
 float& Wave::operator()(uint32_t sample, int channel)
 {
-    return m_pData[sample * m_waveProperties.getNumChannels() + channel];
+    detach();
+    return m_buffer[sample * m_waveProperties.getNumChannels() + channel];
 }
 
 const float& Wave::operator()(uint32_t sample, int channel) const
 {
-    return m_pData[sample * m_waveProperties.getNumChannels() + channel];
+    return m_buffer[sample * m_waveProperties.getNumChannels() + channel];
 }
 
 void Wave::operator=(const Wave& other)
@@ -1081,32 +1072,12 @@ void Wave::operator=(const Wave& other)
     if (this == &other) {
         return;
     }
-
-    const uint32_t oldNumSamples = m_numSamples;
-    m_header = other.m_header;
-    m_dataSubChunk = other.m_dataSubChunk;
+    m_header        = other.m_header;
+    m_dataSubChunk  = other.m_dataSubChunk;
     m_isLittleEndian = other.m_isLittleEndian;
+    m_numSamples    = other.m_numSamples;
     m_waveProperties = other.m_waveProperties;
-
-    if (other.m_pData == nullptr || other.m_numSamples == 0) {
-        std::free(m_pData);
-        m_pData = nullptr;
-        m_numSamples = other.m_numSamples;
-        return;
-    }
-
-    if (m_pData == nullptr) {
-        m_numSamples = other.m_numSamples;
-        reserveMemory(other.m_numSamples);
-        copySamples(other.m_pData, m_pData, m_numSamples);
-    } else if (oldNumSamples == other.m_numSamples) {
-        m_numSamples = other.m_numSamples;
-        copySamples(other.m_pData, m_pData, m_numSamples);
-    } else {
-        m_numSamples = oldNumSamples;
-        resizeMemory(other.m_numSamples, false);
-        copySamples(other.m_pData, m_pData, m_numSamples);
-    }
+    m_buffer        = other.m_buffer;
 }
 
 std::ostream& operator<<(std::ostream& os, const Wave& wav)

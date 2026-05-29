@@ -4,6 +4,7 @@
 #define WAVE_H
 
 #include "WaveProperties.hpp"
+#include <memory>
 
 namespace wm {
 /*!
@@ -48,9 +49,10 @@ private:
     DataSubChunk m_dataSubChunk;
     bool m_isLittleEndian;
     uint32_t m_numSamples;
-    float* m_pData;
+    std::shared_ptr<float[]> m_buffer;
     WaveProperties m_waveProperties;
 
+    void detach();
     void copySamples(const float* source, float* destination, uint32_t count, uint32_t srcOffset = 0,
                      uint32_t destOffset = 0);
     void generateHeader();
@@ -75,7 +77,7 @@ public:
     void readData(std::FILE* file, uint32_t bufferSize = default_buffer_size);
 
     const float* constAudioData() const;
-    float* audioData() const;
+    float* audioData();
 
     Wave& append(const Wave& other);
     float avgValue(int channel = 0) const;
