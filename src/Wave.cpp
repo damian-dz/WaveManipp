@@ -239,17 +239,6 @@ bool Wave::peekForId(const std::string& id, std::FILE* pFile)
     return res;
 }
 
-void Wave::findDataChunk(std::FILE* pFile)
-{
-    int pos = std::ftell(pFile) + 2;
-    std::fseek(pFile, pos, 0);
-    std::string id = "data";
-    while (!peekForId(id, pFile)) {
-        pos += 2;
-        std::fseek(pFile, pos, 0);
-    }
-}
-
 /*!
  * \brief Loads the file specified by its name into memory.
  * \param filename &mdash; the name of the file
@@ -262,33 +251,170 @@ void Wave::open(const char* filename, uint32_t bufferSize)
         throwError("Failed to open the file.",
                    "Wave::open(const std::string&, uint32_t)");
     }
-    std::fread(&m_header, 1, sizeof(Header), pFile);
+    if (std::fread(&m_header.riff, 1, sizeof(RIFFChunk), pFile) != sizeof(RIFFChunk)) {
+        std::fclose(pFile);
+        throwError("Wrong format or file corrupt.",
+                   "Wave::open(const std::string&, uint32_t)");
+    }
 
     if (std::memcmp(m_header.riff.descriptor.id, "RIFF", 4) == 0) {
         m_isLittleEndian = true;
     } else if (std::memcmp(m_header.riff.descriptor.id, "RIFX", 4) == 0) {
         m_isLittleEndian = false;
     } else {
+        std::fclose(pFile);
         throwError("Wrong format or file corrupt.",
                    "Wave::open(const std::string&, uint32_t)");
     }
 
-    setWaveProperties();
-
-    if (m_waveProperties.getFmtChunkSize() > 16) {
-        int pos = std::ftell(pFile);
-        std::fseek(pFile, pos + (m_waveProperties.getFmtChunkSize() - 16), 0);
+    if (std::memcmp(m_header.riff.type, "WAVE", 4) != 0) {
+        std::fclose(pFile);
+        throwError("Wrong format or file corrupt.",
+                   "Wave::open(const std::string&, uint32_t)");
     }
-    if (!peekForId(std::string("data"), pFile)) {
-        findDataChunk(pFile);
+
+    const bool isCpuLittleEndian = !isCpuBigEndian();
+    const bool isEndiannessMismatched = isCpuLittleEndian != m_isLittleEndian;
+    const auto decodeU32 = [isEndiannessMismatched, this](uint32_t value) {
+        return isEndiannessMismatched ? reverseBytes<uint32_t>(value) : value;
+    };
+
+    m_waveProperties.setRiffChunkSize(decodeU32(m_header.riff.descriptor.size));
+
+    bool foundFmtChunk = false;
+    bool foundDataChunk = false;
+    long dataPosition = 0;
+    const uint16_t waveFormatExtensible = 0xFFFE;
+
+    while (!foundDataChunk || !foundFmtChunk) {
+        Descriptor descriptor {};
+        size_t bytesRead = std::fread(&descriptor, 1, sizeof(Descriptor), pFile);
+        if (bytesRead == 0 && std::feof(pFile)) {
+            break;
+        }
+        if (bytesRead != sizeof(Descriptor)) {
+            std::fclose(pFile);
+            throwError("Unexpected end of file while reading WAV chunks.",
+                       "Wave::open(const std::string&, uint32_t)");
+        }
+
+        uint32_t chunkSize = decodeU32(descriptor.size);
+        long chunkDataPosition = std::ftell(pFile);
+        if (chunkDataPosition < 0) {
+            std::fclose(pFile);
+            throwError("Failed to inspect WAV chunk position.",
+                       "Wave::open(const std::string&, uint32_t)");
+        }
+
+        if (std::memcmp(descriptor.id, "fmt ", 4) == 0) {
+            if (chunkSize < 16) {
+                std::fclose(pFile);
+                throwError("Invalid WAV fmt chunk.",
+                           "Wave::open(const std::string&, uint32_t)");
+            }
+
+            m_header.wave.descriptor = descriptor;
+            if (std::fread(&m_header.wave.audioFormat, 1, sizeof(FmtSubChunk) - sizeof(Descriptor), pFile) !=
+                sizeof(FmtSubChunk) - sizeof(Descriptor)) {
+                std::fclose(pFile);
+                throwError("Unexpected end of file while reading WAV fmt chunk.",
+                           "Wave::open(const std::string&, uint32_t)");
+            }
+
+            std::vector<uint8_t> fmtExtension;
+            uint32_t fmtExtensionSize = chunkSize - 16;
+            if (fmtExtensionSize > 0) {
+                fmtExtension.resize(fmtExtensionSize);
+                if (std::fread(fmtExtension.data(), 1, fmtExtensionSize, pFile) != fmtExtensionSize) {
+                    std::fclose(pFile);
+                    throwError("Unexpected end of file while reading WAV fmt extension.",
+                               "Wave::open(const std::string&, uint32_t)");
+                }
+            }
+
+            setWaveProperties(false);
+
+            if (m_waveProperties.getAudioFormat() == waveFormatExtensible) {
+                if (fmtExtension.size() < 24) {
+                    std::fclose(pFile);
+                    throwError("Invalid WAVE_FORMAT_EXTENSIBLE fmt chunk.",
+                               "Wave::open(const std::string&, uint32_t)");
+                }
+
+                const uint8_t* subFormat = fmtExtension.data() + 8;
+                const bool isPcmSubFormat =
+                    subFormat[0] == 0x01 && subFormat[1] == 0x00 && subFormat[2] == 0x00 && subFormat[3] == 0x00;
+                const bool isFloatSubFormat =
+                    subFormat[0] == 0x03 && subFormat[1] == 0x00 && subFormat[2] == 0x00 && subFormat[3] == 0x00;
+                const bool hasWaveFormatGuidTail =
+                    subFormat[4] == 0x00 && subFormat[5] == 0x00 && subFormat[6] == 0x10 && subFormat[7] == 0x00 &&
+                    subFormat[8] == 0x80 && subFormat[9] == 0x00 && subFormat[10] == 0x00 && subFormat[11] == 0xAA &&
+                    subFormat[12] == 0x00 && subFormat[13] == 0x38 && subFormat[14] == 0x9B && subFormat[15] == 0x71;
+
+                if (!hasWaveFormatGuidTail || (!isPcmSubFormat && !isFloatSubFormat)) {
+                    std::fclose(pFile);
+                    throwError("WAVE_FORMAT_EXTENSIBLE sub-format is not supported.",
+                               "Wave::open(const std::string&, uint32_t)");
+                }
+
+                m_waveProperties.setAudioFormat(isPcmSubFormat ? 1 : 3);
+            }
+
+            foundFmtChunk = true;
+        } else if (std::memcmp(descriptor.id, "data", 4) == 0) {
+            m_dataSubChunk.descriptor = descriptor;
+            m_waveProperties.setDataChunkSize(chunkSize);
+            dataPosition = std::ftell(pFile);
+            foundDataChunk = true;
+        }
+
+        uint32_t paddingByte = chunkSize % 2;
+        if (std::fseek(pFile, chunkDataPosition + chunkSize + paddingByte, SEEK_SET) != 0) {
+            std::fclose(pFile);
+            throwError("WAV chunk exceeds the file size.",
+                       "Wave::open(const std::string&, uint32_t)");
+        }
     }
-    std::fread(&m_dataSubChunk, 1, sizeof(DataSubChunk), pFile);
 
-    setWaveProperties(true);
+    if (!foundFmtChunk || !foundDataChunk) {
+        std::fclose(pFile);
+        throwError("Required WAV fmt or data chunk is missing.",
+                   "Wave::open(const std::string&, uint32_t)");
+    }
 
-    m_numSamples = m_waveProperties.getDataChunkSize() / (m_waveProperties.getNumBitsPerSample() / 8);
+    uint16_t audioFormat = m_waveProperties.getAudioFormat();
+    uint16_t numChannels = m_waveProperties.getNumChannels();
+    uint16_t sampleBitDepth = m_waveProperties.getNumBitsPerSample();
+    uint16_t bytesPerSample = sampleBitDepth / 8;
+    uint16_t frameSize = numChannels * bytesPerSample;
+    uint32_t dataChunkSize = m_waveProperties.getDataChunkSize();
+
+    if (numChannels == 0 || sampleBitDepth == 0 || sampleBitDepth % 8 != 0 || frameSize == 0) {
+        std::fclose(pFile);
+        throwError("Invalid WAV format parameters.",
+                   "Wave::open(const std::string&, uint32_t)");
+    }
+    if ((audioFormat == 1 && sampleBitDepth != 8 && sampleBitDepth != 16 && sampleBitDepth != 24) ||
+        (audioFormat == 3 && sampleBitDepth != 32) ||
+        (audioFormat != 1 && audioFormat != 3)) {
+        std::fclose(pFile);
+        throwError("WAV audio format is not supported.",
+                   "Wave::open(const std::string&, uint32_t)");
+    }
+    if (dataChunkSize % bytesPerSample != 0 || dataChunkSize % frameSize != 0) {
+        std::fclose(pFile);
+        throwError("WAV data chunk size does not align with the sample format.",
+                   "Wave::open(const std::string&, uint32_t)");
+    }
+
+    m_numSamples = dataChunkSize / bytesPerSample;
     reserveMemory(m_numSamples);
     if (m_buffer) {
+        if (std::fseek(pFile, dataPosition, SEEK_SET) != 0) {
+            std::fclose(pFile);
+            throwError("Failed to seek to WAV data chunk.",
+                       "Wave::open(const std::string&, uint32_t)");
+        }
         readData(pFile, bufferSize);
     }
     std::fclose(pFile);
@@ -316,10 +442,16 @@ void Wave::readData(std::FILE* file, uint32_t bufferSize)
 
     uint16_t sampleBitDepth = m_waveProperties.getNumBitsPerSample();
     uint32_t dataChunkSize = m_waveProperties.getDataChunkSize();
-    uint32_t numSamples = dataChunkSize / (uint32_t(sampleBitDepth) / 8);
     uint16_t numChannels = m_waveProperties.getNumChannels();
     uint16_t frameSize = numChannels * sampleBitDepth / 8;
+    if (sampleBitDepth == 0 || sampleBitDepth % 8 != 0 || numChannels == 0 || frameSize == 0) {
+        std::free(pBuffer);
+        throwError("Invalid WAV format parameters.",
+                   "Wave::readData(std::FILE*, uint32_t)");
+    }
+    uint32_t numSamples = dataChunkSize / (uint32_t(sampleBitDepth) / 8);
     if (bufferSize % frameSize != 0) {
+        std::free(pBuffer);
         throwError("The buffer size must be a multiple of the frame size.",
                    "Wave::readData(std::FILE*, uint32_t)");
     }

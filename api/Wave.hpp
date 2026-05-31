@@ -58,7 +58,6 @@ private:
     void generateHeader();
     template <typename T> T reverseBytes(T val);
     void changeBufferEndianness(uint8_t* bytes, uint32_t sampleSize, uint32_t bufferSize);
-    void findDataChunk(std::FILE* pFile);
     bool isCpuBigEndian() const;
     bool peekForId(const std::string& id, std::FILE* pFile);
     void setFourCharacterCodes();
