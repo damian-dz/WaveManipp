@@ -8,7 +8,15 @@
 
 namespace wm {
 /*!
- * \brief A class that represents an audio file in memory.
+ * \brief Owns or shares decoded WAVE audio data in memory.
+ *
+ * \details Wave stores samples internally as normalized 32-bit floats while preserving
+ * file-oriented metadata such as channel count, sample rate, bit depth, RIFF/RIFX
+ * endianness, and chunk sizes. Samples are interleaved by frame: for stereo audio,
+ * frame 0 is laid out as left sample 0, right sample 0, then frame 1, and so on.
+ *
+ * Copy construction and assignment are shallow and share the audio buffer. Mutating
+ * methods detach from shared storage before writing.
  */
 class WAVEMANIPPAPI Wave
 {
@@ -64,75 +72,158 @@ private:
     void setWaveProperties(bool onlyDataChunk = false);
 
 public:
+    /*! \brief Creates an empty wave with a zero-initialized header. */
     Wave();
+    /*! \brief Loads a WAVE file into memory. */
     Wave(const char* filename);
+    /*! \brief Loads a WAVE file into memory. */
     Wave(const std::string& filename);
+    /*!
+     * \brief Creates a silent wave with the requested format.
+     * \param numFrames Number of audio frames to allocate.
+     * \param numChannels Number of interleaved channels.
+     * \param bitDepth Bit depth used when saving the file.
+     * \param sampleRate Sample rate in Hz.
+     */
     Wave(uint32_t numFrames, uint16_t numChannels = 2, uint16_t bitDepth = 16, uint32_t sampleRate = default_sample_rate);
+    /*! \brief Shares the audio buffer and metadata with another Wave. */
     Wave(const Wave& other);
+    /*! \brief Releases this Wave's reference to the shared audio buffer. */
     ~Wave();
 
+    /*!
+     * \brief Opens and decodes a WAVE file.
+     * \param filename Path to a RIFF or RIFX WAVE file.
+     * \param bufferSize Intermediate I/O buffer size in bytes; must align with the frame size.
+     */
     void open(const char* filename, uint32_t bufferSize = default_buffer_size);
+    /*!
+     * \brief Opens and decodes a WAVE file.
+     * \param filename Path to a RIFF or RIFX WAVE file.
+     * \param bufferSize Intermediate I/O buffer size in bytes; must align with the frame size.
+     */
     void open(const std::string& filename, uint32_t bufferSize = default_buffer_size);
+    /*!
+     * \brief Reads audio data from an already-positioned file stream into this Wave.
+     * \param file Open file positioned at the data chunk payload.
+     * \param bufferSize Intermediate read buffer size in bytes.
+     */
     void readData(std::FILE* file, uint32_t bufferSize = default_buffer_size);
 
+    /*! \brief Returns a read-only pointer to interleaved normalized float samples. */
     const float* constAudioData() const;
+    /*! \brief Returns a mutable pointer to interleaved normalized float samples, detaching if shared. */
     float* audioData();
 
+    /*! \brief Appends another Wave's audio after this Wave. */
     Wave& append(const Wave& other);
+    /*! \brief Returns the arithmetic mean for one channel. */
     float avgValue(int channel = 0) const;
+    /*! \brief Multiplies one channel by a linear gain value. */
     void changeVolume(float volume, int channel = 0);
+    /*! \brief Averages all channels into a single mono channel. */
     void downmixToMono();
+    /*! \brief Generates mono white noise in the range [-1, 1). */
     static Wave generateRandom(uint32_t numFrames, uint16_t bitDepth = 16, uint32_t sampleRate = default_sample_rate);
+    /*! \brief Generates mono white noise for a duration in seconds. */
     static Wave randomFromDuration(float duration, uint16_t bitDepth = 16, uint32_t sampleRate = default_sample_rate);
+    /*!
+     * \brief Generates a mono sine wave.
+     * \param waveFreq Frequency in Hz.
+     * \param phaseShift Phase offset in seconds.
+     * \param numFrames Number of frames to generate.
+     * \param bitDepth Bit depth used when saving.
+     * \param sampleRate Sample rate in Hz.
+     * \param multiThreaded Enables OpenMP parallel generation when available.
+     */
     static Wave generateSine(float waveFreq, float phaseShift,  uint32_t numFrames,
         uint16_t bitDepth = 16, uint32_t sampleRate = default_sample_rate, bool multiThreaded = false);
+    /*! \brief Generates a mono square wave. */
     static Wave generateSquare(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames,
                                bool multiThreaded = false);
+    /*! \brief Generates a mono triangle wave. */
     static Wave generateTriangle(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames,
                                  bool multiThreaded = false);
+    /*! \brief Returns per-bin averaged channel data, optionally using absolute sample values. */
     std::vector<float> getAveragedOutData(uint32_t binSize, bool absolute = false, int channel = 0) const;
+    /*! \brief Copies a contiguous channel range into a vector. */
     std::vector<float> getBuffer(uint32_t offset, uint32_t sampleCount, int channel = 0) const;
+    /*! \brief Returns a downsampled view of a channel by averaging groups of samples. */
     std::vector<float> getSqueezedBuffer(uint32_t offset, uint32_t squeezedSampleCount, float squeezeFactor,
                                          bool absolute = false, int channel = 0, bool multiThreaded = false) const;
+    /*! \brief Returns an upsampled channel segment using simple stretching. */
     std::vector<float> getStretchedBuffer(uint32_t offset, uint32_t stretchedSampleCount, float stretchFactor,
                                           int channel = 0) const;
+    /*! \brief Returns the absolute peak sample value for a channel. */
     float getAbsPeak(int channel) const;
+    /*! \brief Inserts raw interleaved audio samples at a sample offset. */
     void insertAudio(uint32_t offset, const float* audio, uint32_t numSamples);
+    /*! \brief Inserts raw interleaved audio samples at a sample offset. */
     void insertAudio(uint32_t offset, std::vector<float>& audio);
+    /*! \brief Returns true when this Wave has no allocated audio samples. */
     bool isEmpty() const;
+    /*! \brief Returns true when this Wave will be serialized as RIFF little-endian data. */
     bool isLittleEndian() const;
+    /*! \brief Returns true when the audio has one channel. */
     bool isMono() const;
+    /*! \brief Returns the maximum sample value in one channel. */
     float maxValue(int channel = 0) const;
+    /*! \brief Returns the minimum sample value in one channel. */
     float minValue(int channel = 0) const;
+    /*! \brief Allocates storage for a number of interleaved samples. */
     void reserveMemory(uint32_t numSamples, bool zeroInit = false);
+    /*! \brief Returns a linearly resampled copy at the requested sample rate. */
     Wave resample(uint32_t targetSampleRate) const;
+    /*! \brief Resizes storage to a number of interleaved samples and updates chunk sizes. */
     void resizeMemory(uint32_t numSamples, bool zeroInit = true);
+    /*! \brief Reverses the sample order of one channel in place. */
     void reverse(int channel = 0);
+    /*! \brief Replaces this Wave's interleaved sample data. */
     void setAudio(const float* audio, uint32_t numSamples);
+    /*! \brief Replaces this Wave's interleaved sample data. */
     void setAudio(std::vector<float>& audio);
+    /*! \brief Selects RIFF little-endian or RIFX big-endian serialization. */
     void setLittleEndian(bool isLittleEndian);
+    /*! \brief Swaps two channels in place. */
     void swapChannels(int from = 0, int to = 1);
+    /*! \brief Duplicates mono audio into a stereo buffer. */
     void upmixToStereo();
+    /*! \brief Clears the internal RIFF and data chunk header structs. */
     void zeroInitHeader();
 
+    /*! \brief Saves this Wave as a RIFF/RIFX WAVE file. */
     void saveAs(const char* filename, uint32_t bufferSize = default_buffer_size);
+    /*! \brief Saves this Wave as a RIFF/RIFX WAVE file. */
     void saveAs(const std::string& filename, uint32_t bufferSize = default_buffer_size);
+    /*! \brief Writes the data chunk payload to an already-open file stream. */
     void writeData(std::FILE* file, uint32_t bufferSize = default_buffer_size);
 
+    /*! \brief Sets the bit depth used when serializing samples. */
     void setSampleBitDepth(uint16_t sampleBitDepth);
+    /*! \brief Sets the sample rate metadata in Hz. */
     void setSampleRate(uint32_t sampleRate);
 
+    /*! \brief Returns the byte size of the WAVE data chunk. */
     uint32_t getDataChunkSize() const;
+    /*! \brief Returns the number of channels. */
     uint16_t getNumChannels() const;
+    /*! \brief Returns the number of audio frames. */
     uint32_t getNumFrames() const;
+    /*! \brief Returns the number of interleaved samples. */
     uint32_t getNumSamples() const;
+    /*! \brief Returns the bit depth used for file serialization. */
     uint16_t getSampleBitDepth() const;
+    /*! \brief Returns the sample rate in Hz. */
     uint32_t getSampleRate() const;
 
+    /*! \brief Writes a human-readable summary of WAVE header metadata. */
     friend std::ostream& operator<<(std::ostream& os, const Wave& wav);
 
+    /*! \brief Accesses a mutable sample by frame index and channel index. */
     float& operator()(uint32_t sample, int channel);
+    /*! \brief Accesses a read-only sample by frame index and channel index. */
     const float& operator()(uint32_t sample, int channel) const;
+    /*! \brief Shares another Wave's metadata and audio buffer with this Wave. */
     void operator=(const Wave& other);
 };
 }

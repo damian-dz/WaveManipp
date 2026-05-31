@@ -25,6 +25,7 @@
 #define PRINT(var) (std::cout << var << std::endl);
 #define PRINTN(var) (std::cout << #var << ": " << var << std::endl);
 
+/*! \brief Common audio sample rates in Hz. */
 enum class SampleRate : uint32_t {
     SR_8000 = 8000,
     SR_11025 = 11025,
@@ -39,9 +40,12 @@ enum class SampleRate : uint32_t {
     SR_192000 = 192000
 };
 
+/*! \brief Default intermediate I/O buffer size in bytes. */
 constexpr uint32_t default_buffer_size = 24576;
+/*! \brief Default sample rate in Hz. */
 constexpr uint32_t default_sample_rate = static_cast<uint32_t>(SampleRate::SR_44100);
 
+/*! \brief Prints an error message and throws it as a std::string-compatible exception payload. */
 [[noreturn]] inline void throwError(const std::string& errorMsg, const std::string& funcName = "")
 {
     std::string prefix = funcName != "" ? funcName + ": " : "";
