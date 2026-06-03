@@ -810,6 +810,33 @@ Wave Wave::generateTriangle(float waveFreq, float phaseShift, uint32_t samplingF
     return result;
 }
 
+Wave Wave::generateClick(float bpm, uint8_t beatsPerBar, uint32_t numFrames,
+                         uint16_t bitDepth, uint32_t sampleRate)
+{
+    Wave result(numFrames, 1, bitDepth, sampleRate);
+    constexpr float pi = 3.1415927f;
+    const double beatFrames = sampleRate * 60.0 / bpm;
+    // Downbeat: 1000 Hz, 30 ms, amplitude 0.8; off-beat: 600 Hz, 20 ms, amplitude 0.5
+    const uint32_t downLen = static_cast<uint32_t>(sampleRate * 0.030);
+    const uint32_t beatLen = static_cast<uint32_t>(sampleRate * 0.020);
+
+    double beatPos = 0.0;
+    for (int beatNum = 0; beatPos < numFrames; ++beatNum) {
+        const uint32_t start    = static_cast<uint32_t>(beatPos);
+        const bool     isDown   = (beatNum % beatsPerBar == 0);
+        const float    freq     = isDown ? 1000.f : 600.f;
+        const float    amp      = isDown ? 0.8f   : 0.5f;
+        const uint32_t clickLen = isDown ? downLen : beatLen;
+
+        for (uint32_t i = 0; i < clickLen && start + i < numFrames; ++i) {
+            const float t = static_cast<float>(i) / sampleRate;
+            result.m_buffer[start + i] = amp * expf(-50.f * t) * sinf(2.f * pi * freq * t);
+        }
+        beatPos += beatFrames;
+    }
+    return result;
+}
+
 std::vector<float> Wave::getAveragedOutData(uint32_t binSize, bool absolute, int channel) const
 {
     uint16_t numChannels = m_waveProperties.getNumChannels();

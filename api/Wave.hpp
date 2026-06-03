@@ -144,6 +144,16 @@ public:
     /*! \brief Generates a mono triangle wave. */
     static Wave generateTriangle(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames,
                                  bool multiThreaded = false);
+    /*!
+     * \brief Generates a mono click track at the specified tempo.
+     * \param bpm         Tempo in beats per minute.
+     * \param beatsPerBar Beats per bar (time signature numerator).
+     * \param numFrames   Number of audio frames to generate.
+     * \param bitDepth    Bit depth used when saving.
+     * \param sampleRate  Sample rate in Hz.
+     */
+    static Wave generateClick(float bpm, uint8_t beatsPerBar, uint32_t numFrames,
+                              uint16_t bitDepth = 16, uint32_t sampleRate = default_sample_rate);
     /*! \brief Returns per-bin averaged channel data, optionally using absolute sample values. */
     std::vector<float> getAveragedOutData(uint32_t binSize, bool absolute = false, int channel = 0) const;
     /*! \brief Copies a contiguous channel range into a vector. */
