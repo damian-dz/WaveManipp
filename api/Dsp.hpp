@@ -42,7 +42,7 @@ void invertRange(Wave& wave, uint32_t startFrame, uint32_t endFrame);
 // ---- Fades ------------------------------------------------------------------
 
 /*! \brief Fade curve shape used by fadeIn() and fadeOut(). */
-enum class FadeCurve { Linear, Logarithmic };
+enum class FadeCurve { Linear, Logarithmic, EqualPower, SCurve };
 
 /*! \brief Applies a fade-in over a frame range. */
 void fadeIn (Wave& wave, uint32_t startFrame, uint32_t endFrame, FadeCurve curve = FadeCurve::Logarithmic);
@@ -77,6 +77,18 @@ struct StftConfig {
 std::vector<float> makeWindow(size_t windowSize, WindowFunction window);
 /*! \brief Computes single-sided STFT magnitude frames in dB. */
 std::vector<std::vector<float>> stftMagnitudeDb(const Wave& wave, const StftConfig& config = {});
+
+// ---- Reverb -----------------------------------------------------------------
+
+/*! \brief Parameters for the Schroeder/Freeverb-style reverb. */
+struct ReverbParams {
+    float roomSize = 0.5f;  ///< Comb feedback amount (0 = tiny room, 1 = large hall)
+    float damping  = 0.5f;  ///< High-frequency absorption (0 = bright, 1 = dark)
+    float wetMix   = 0.3f;  ///< Dry/wet blend (0 = all dry, 1 = all wet)
+};
+
+/*! \brief Applies reverb over a frame range. The tail is clipped at endFrame. */
+void reverb(Wave& wave, uint32_t startFrame, uint32_t endFrame, const ReverbParams& params = {});
 
 // ---- Reverse ----------------------------------------------------------------
 

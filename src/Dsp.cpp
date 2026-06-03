@@ -81,6 +81,18 @@ void invertRange(Wave& wave, uint32_t startFrame, uint32_t endFrame)
     applyGainRange(wave, startFrame, endFrame, -1.f);
 }
 
+static constexpr float k_pi = 3.14159265358979323846f;
+
+static float fadeGain(FadeCurve curve, float t)
+{
+    switch (curve) {
+    case FadeCurve::Logarithmic: return std::pow(10.f, -3.f * (1.f - t));
+    case FadeCurve::EqualPower:  return std::sin(t * k_pi * 0.5f);
+    case FadeCurve::SCurve:      return (1.f - std::cos(t * k_pi)) * 0.5f;
+    default:                     return t; // Linear
+    }
+}
+
 void fadeIn(Wave& wave, uint32_t startFrame, uint32_t endFrame, FadeCurve curve)
 {
     const uint16_t nc  = wave.getNumChannels();
@@ -88,10 +100,7 @@ void fadeIn(Wave& wave, uint32_t startFrame, uint32_t endFrame, FadeCurve curve)
     if (startFrame >= end) return;
     const float len = static_cast<float>(end - startFrame);
     for (uint32_t fr = startFrame; fr < end; ++fr) {
-        const float t    = static_cast<float>(fr - startFrame) / len;
-        const float gain = (curve == FadeCurve::Logarithmic)
-            ? std::pow(10.f, -3.f * (1.f - t))  // 0 dB at t=1, -60 dB at t=0
-            : t;
+        const float gain = fadeGain(curve, static_cast<float>(fr - startFrame) / len);
         for (uint16_t ch = 0; ch < nc; ++ch)
             wave(fr, static_cast<int>(ch)) *= gain;
     }
@@ -104,12 +113,88 @@ void fadeOut(Wave& wave, uint32_t startFrame, uint32_t endFrame, FadeCurve curve
     if (startFrame >= end) return;
     const float len = static_cast<float>(end - startFrame);
     for (uint32_t fr = startFrame; fr < end; ++fr) {
-        const float t    = static_cast<float>(fr - startFrame) / len;
-        const float gain = (curve == FadeCurve::Logarithmic)
-            ? std::pow(10.f, -3.f * t)           // 0 dB at t=0, -60 dB at t=1
-            : (1.f - t);
+        const float gain = fadeGain(curve, 1.f - static_cast<float>(fr - startFrame) / len);
         for (uint16_t ch = 0; ch < nc; ++ch)
             wave(fr, static_cast<int>(ch)) *= gain;
+    }
+}
+
+// ---- Reverb -----------------------------------------------------------------
+
+namespace {
+
+struct CombFilter {
+    std::vector<float> buf;
+    size_t pos   = 0;
+    float  store = 0.f;
+
+    void init(size_t size) { buf.assign(size, 0.f); pos = 0; store = 0.f; }
+
+    float process(float input, float feedback, float damp1, float damp2)
+    {
+        float out = buf[pos];
+        store = out * damp2 + store * damp1;
+        buf[pos] = input + store * feedback;
+        if (++pos >= buf.size()) pos = 0;
+        return out;
+    }
+};
+
+struct AllpassFilter {
+    std::vector<float> buf;
+    size_t pos = 0;
+
+    void init(size_t size) { buf.assign(size, 0.f); pos = 0; }
+
+    float process(float input)
+    {
+        float out = buf[pos];
+        buf[pos] = input + out * 0.5f;
+        if (++pos >= buf.size()) pos = 0;
+        return out - input;
+    }
+};
+
+} // namespace
+
+void reverb(Wave& wave, uint32_t startFrame, uint32_t endFrame, const ReverbParams& params)
+{
+    const uint32_t end = std::min(endFrame, wave.getNumFrames());
+    if (startFrame >= end) return;
+    const uint16_t nc    = wave.getNumChannels();
+    const float    scale = static_cast<float>(wave.getSampleRate()) / 44100.f;
+
+    // Delay lengths tuned at 44100 Hz (Freeverb reference values)
+    static const int kCombDelays[] = { 1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617 };
+    static const int kApDelays[]   = { 556, 441, 341, 225 };
+    constexpr int kNumCombs = 8;
+    constexpr int kNumAp    = 4;
+
+    const float feedback = 0.7f + params.roomSize * 0.28f;
+    const float damp1    = params.damping * 0.4f;
+    const float damp2    = 1.f - damp1;
+    const float wet      = params.wetMix;
+    const float dry      = 1.f - wet;
+
+    for (uint16_t ch = 0; ch < nc; ++ch) {
+        CombFilter    combs[kNumCombs];
+        AllpassFilter aps[kNumAp];
+
+        for (int i = 0; i < kNumCombs; ++i)
+            combs[i].init(static_cast<size_t>(kCombDelays[i] * scale + 0.5f));
+        for (int i = 0; i < kNumAp; ++i)
+            aps[i].init(static_cast<size_t>(kApDelays[i] * scale + 0.5f));
+
+        for (uint32_t fr = startFrame; fr < end; ++fr) {
+            const float input = wave(fr, ch);
+            float out = 0.f;
+            for (int i = 0; i < kNumCombs; ++i)
+                out += combs[i].process(input, feedback, damp1, damp2);
+            out *= 0.125f; // normalize 8 summed combs
+            for (int i = 0; i < kNumAp; ++i)
+                out = aps[i].process(out);
+            wave(fr, ch) = dry * input + wet * out;
+        }
     }
 }
 
