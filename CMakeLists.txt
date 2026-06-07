@@ -3,6 +3,7 @@ find_package(OpenMP)
 add_library(WaveManipp STATIC
     src/Wave.cpp
     src/Dsp.cpp
+    src/PhaseVocoder.cpp
     src/Fft.cpp
     src/WaveBuilder.cpp
     src/WaveMixer.cpp

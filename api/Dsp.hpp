@@ -98,6 +98,15 @@ struct ReverbParams {
 /*! \brief Applies reverb over a frame range. The tail is clipped at endFrame. */
 void reverb(Wave& wave, uint32_t startFrame, uint32_t endFrame, const ReverbParams& params = {});
 
+// ---- Tempo / Pitch ----------------------------------------------------------
+
+/*! \brief Stretches or compresses the wave in time without changing pitch.
+ *
+ *  Uses a phase vocoder (Hann-windowed STFT with phase accumulation).
+ *  \p factor > 1 makes the wave longer (slower tempo); < 1 makes it shorter (faster tempo).
+ *  \p fftSize must be a power of two; 2048 is a good default. */
+void stretchTempo(Wave& wave, float factor, size_t fftSize = 2048);
+
 // ---- Reverse ----------------------------------------------------------------
 
 /*! \brief Reverses one channel in place. */
