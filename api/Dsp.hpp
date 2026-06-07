@@ -34,6 +34,14 @@ void normalizeRange(Wave& wave, uint32_t startFrame, uint32_t endFrame, float ta
 /*! \brief Sets every sample in a frame range to zero. */
 void silence(Wave& wave, uint32_t startFrame, uint32_t endFrame);
 
+/*! \brief Changes the playback speed by \p factor (pitch shifts proportionally).
+ *
+ *  The wave is reinterpreted at \p factor × its current sample rate, then
+ *  resampled back to the original rate. Factor > 1 makes it shorter and
+ *  higher-pitched; factor < 1 makes it longer and lower-pitched.
+ */
+void changeSpeed(Wave& wave, float factor);
+
 /*! \brief Inverts polarity for the whole wave. */
 void invert(Wave& wave);
 /*! \brief Inverts polarity for a frame range. */

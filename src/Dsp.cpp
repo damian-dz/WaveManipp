@@ -71,6 +71,16 @@ void silence(Wave& wave, uint32_t startFrame, uint32_t endFrame)
             wave(fr, static_cast<int>(ch)) = 0.f;
 }
 
+void changeSpeed(Wave& wave, float factor)
+{
+    if (factor <= 0.f || wave.isEmpty()) return;
+    const uint32_t origRate = wave.getSampleRate();
+    const auto newRate = static_cast<uint32_t>(std::round(static_cast<double>(origRate) * factor));
+    if (newRate == 0 || newRate == origRate) return;
+    wave.setSampleRate(newRate);
+    wave = wave.resample(origRate);
+}
+
 void invert(Wave& wave)
 {
     applyGain(wave, -1.f);
