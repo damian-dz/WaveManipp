@@ -1,5 +1,10 @@
 #pragma once
 
+/*!
+ * \file utils.hpp
+ * \brief Shared constants, the SampleRate enum, error helper, and debug macros.
+ */
+
 #ifndef UTILS_H
 #define UTILS_H
 
@@ -22,7 +27,9 @@
 #include <cmath>
 #endif
 
+/*! \def PRINT(var)  Prints \p var followed by a newline to stdout. */
 #define PRINT(var) (std::cout << var << std::endl);
+/*! \def PRINTN(var) Prints "var: value" followed by a newline to stdout. */
 #define PRINTN(var) (std::cout << #var << ": " << var << std::endl);
 
 /*! \brief Common audio sample rates in Hz. */
@@ -45,7 +52,11 @@ constexpr uint32_t default_buffer_size = 24576;
 /*! \brief Default sample rate in Hz. */
 constexpr uint32_t default_sample_rate = static_cast<uint32_t>(SampleRate::SR_44100);
 
-/*! \brief Prints an error message and throws it as a std::string-compatible exception payload. */
+/*!
+ * \brief Prints an error message and throws it as a std::string exception payload.
+ * \param errorMsg Human-readable description of the error.
+ * \param funcName Optional caller name prepended to the printed message.
+ */
 [[noreturn]] inline void throwError(const std::string& errorMsg, const std::string& funcName = "")
 {
     std::string prefix = funcName != "" ? funcName + ": " : "";
@@ -53,14 +64,8 @@ constexpr uint32_t default_sample_rate = static_cast<uint32_t>(SampleRate::SR_44
     throw errorMsg;
 }
 
-/**
- * @brief WaveManipp
- *
- * \ingroup wm
- */
+/*! \namespace wm \brief Root namespace for the WaveManipp library. */
 namespace wm {
-
-
 }
 
 #endif // !UTILS_H

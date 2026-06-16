@@ -1,5 +1,10 @@
 #pragma once
 
+/*!
+ * \file WaveMixer.hpp
+ * \brief WaveMixer class for multi-track mixing of Wave chunks.
+ */
+
 #ifndef WAVE_MIXER_H
 #define WAVE_MIXER_H
 
@@ -65,27 +70,43 @@ public:
     /*! \brief Destroys the mixer without taking ownership of source waves. */
     WAVEMANIPPAPI ~WaveMixer();
 
-    /*! \brief Adds an empty track with the requested source channel count. */
+    /*!
+     * \brief Adds an empty track with the requested source channel count.
+     * \param numChannels Number of channels in the track's source audio.
+     */
     WAVEMANIPPAPI void addTrack(uint16_t numChannels);
-    /*! \brief Adds a track containing one Wave chunk at a frame offset. */
+    /*!
+     * \brief Adds a track containing one Wave chunk at a frame offset.
+     * \param offset Frame offset at which the chunk begins in the rendered output.
+     * \param wav    Source wave to place on the new track.
+     */
     WAVEMANIPPAPI void addTrack(uint32_t offset, const Wave& wav);
-    /*! \brief Adds a track containing one Wave chunk at a time offset in seconds. */
+    /*!
+     * \brief Adds a track containing one Wave chunk at a time offset in seconds.
+     * \param timeInSec Time offset in seconds at which the chunk begins.
+     * \param wav       Source wave to place on the new track.
+     */
     WAVEMANIPPAPI void addTrackAt(float timeInSec, const Wave& wav);
     /*! \brief Returns the rendered length in frames. */
     WAVEMANIPPAPI uint32_t getNumFrames() const;
     /*! \brief Returns the number of tracks. */
     WAVEMANIPPAPI int getNumTracks() const;
-    /*! \brief Returns a track's linear gain. */
+    /*! \brief Returns a track's linear gain. \param trackIdx Zero-based track index. */
     WAVEMANIPPAPI float getTrackVolume(int trackIdx) const;
-    /*! \brief Returns a track's pan value in the range convention -1 left to +1 right. */
+    /*! \brief Returns a track's pan value (-1 = full left, 0 = center, +1 = full right). \param trackIdx Zero-based track index. */
     WAVEMANIPPAPI float getTrackPan(int trackIdx) const;
-    /*! \brief Returns true when a track is muted. */
+    /*! \brief Returns true when a track is muted. \param trackIdx Zero-based track index. */
     WAVEMANIPPAPI bool  isTrackMuted(int trackIdx) const;
-    /*! \brief Returns true when a track is soloed. */
+    /*! \brief Returns true when a track is soloed. \param trackIdx Zero-based track index. */
     WAVEMANIPPAPI bool  isTrackSolo(int trackIdx) const;
-    /*! \brief Inserts an additional Wave chunk into an existing track at a frame offset. */
+    /*!
+     * \brief Inserts an additional Wave chunk into an existing track at a frame offset.
+     * \param trackIdx Zero-based track index.
+     * \param offset   Frame offset at which the chunk begins in the rendered output.
+     * \param wav      Source wave to insert.
+     */
     WAVEMANIPPAPI void insertChunk(int trackIdx, uint32_t offset, const Wave& wav);
-    /*! \brief Removes a track and its chunk references. */
+    /*! \brief Removes a track and all its chunk references. \param trackIdx Zero-based track index. */
     WAVEMANIPPAPI void removeTrack(int trackIdx);
     /*! \brief Sets the output bit depth for rendered audio. */
     WAVEMANIPPAPI void setBitsPerSample(uint16_t bitsPerSample);
@@ -93,13 +114,29 @@ public:
     WAVEMANIPPAPI void setNumChannels(uint16_t numChannels);
     /*! \brief Sets the output sample rate in Hz. */
     WAVEMANIPPAPI void setSampleRate(uint32_t sampleRate);
-    /*! \brief Sets a track's linear gain. */
+    /*!
+     * \brief Sets a track's linear gain.
+     * \param trackIdx Zero-based track index.
+     * \param volume   Linear gain factor (1.0 = unity).
+     */
     WAVEMANIPPAPI void setTrackVolume(int trackIdx, float volume);
-    /*! \brief Sets a track's pan value, where -1 is left and +1 is right. */
+    /*!
+     * \brief Sets a track's pan value.
+     * \param trackIdx Zero-based track index.
+     * \param pan      Pan position: -1.0 = full left, 0.0 = center, +1.0 = full right.
+     */
     WAVEMANIPPAPI void setTrackPan(int trackIdx, float pan);
-    /*! \brief Enables or disables track muting. */
+    /*!
+     * \brief Enables or disables track muting.
+     * \param trackIdx Zero-based track index.
+     * \param muted    Pass true to silence the track during rendering.
+     */
     WAVEMANIPPAPI void setTrackMuted(int trackIdx, bool muted);
-    /*! \brief Enables or disables track soloing. */
+    /*!
+     * \brief Enables or disables track soloing.
+     * \param trackIdx Zero-based track index.
+     * \param solo     Pass true to solo this track; non-soloed tracks are suppressed during rendering.
+     */
     WAVEMANIPPAPI void setTrackSolo(int trackIdx, bool solo);
     /*! \brief Legacy renderer kept for compatibility. */
     WAVEMANIPPAPI Wave toWave_old();

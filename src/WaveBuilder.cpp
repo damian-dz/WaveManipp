@@ -27,19 +27,11 @@ WaveBuilder::WaveBuilder(const WaveBuilder& other) :
 
 }
 
-/*!
- * \brief Destroys the WaveBuilder object and frees its associated resources.
- */
 WaveBuilder::~WaveBuilder()
 {
     m_wavPtrs.clear();
 } 
 
-/*!
- * \brief Appends the Wave object to the current instance of WaveBuilder.
- * \param wav &mdash; the Wave object to append
- * \result A reference to itself.
- */
 WaveBuilder& WaveBuilder::append(const Wave& wav)
 {
     if (wav.getSampleBitDepth() != m_bitsPerSample ||
@@ -93,11 +85,6 @@ void WaveBuilder::reserve(uint32_t count)
     m_wavPtrs.reserve(size_t(count));
 }
 
-/*!
- * \brief Merges all of the Wave objects pointed to into a single Wave object.
- * \details The objects pointed to must not be destroyed before calling this method.
- * \result The merged Wave object.
- */
 Wave WaveBuilder::toWave()
 {
     uint32_t totalNumSamples = 0;

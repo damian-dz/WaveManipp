@@ -1,5 +1,10 @@
 #pragma once
 
+/*!
+ * \file RecordingBuffer.hpp
+ * \brief RecordingBuffer for collecting live audio and converting it to Wave objects.
+ */
+
 #ifndef RECORDING_BUFFER_H
 #define RECORDING_BUFFER_H
 
@@ -34,7 +39,11 @@ public:
      */
     WAVEMANIPPAPI void     reset(uint16_t numChannels, uint32_t sampleRate, uint16_t bitDepth,
                                  uint32_t reserveFrames = 0);
-    /*! \brief Appends interleaved normalized float samples for a number of frames. */
+    /*!
+     * \brief Appends interleaved normalized float samples for a number of frames.
+     * \param data      Pointer to interleaved float samples (numChannels × numFrames values).
+     * \param numFrames Number of frames contained in \p data.
+     */
     WAVEMANIPPAPI void     append(const float* data, uint32_t numFrames);
     /*! \brief Returns the number of frames published by append(). */
     WAVEMANIPPAPI uint32_t numFrames() const;

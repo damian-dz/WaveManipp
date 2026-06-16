@@ -2,9 +2,6 @@
 
 
 namespace wm {
-/*!
- * \brief Constructs an empty WaveMixer object with a bit depth of 16, one channel, and a sample rate of 44100 Hz.
- */
 WaveMixer::WaveMixer() :
     m_bitsPerSample(16),
     m_numChannels(1),
@@ -12,10 +9,6 @@ WaveMixer::WaveMixer() :
 {
 }
 
-/*!
- * \brief Constructs a WaveMixer object with the parameters of the provided Wave object
-          and sets it as the first chunk on the first track.
- */
 WaveMixer::WaveMixer(const Wave& wav) :
     m_bitsPerSample(wav.getSampleBitDepth()),
     m_numChannels(wav.getNumChannels()),
@@ -30,9 +23,6 @@ WaveMixer::~WaveMixer()
 {
 }
 
-/*!
- * \brief Adds an empty track with the specified number of channels to the mix.
- */
 void WaveMixer::addTrack(uint16_t numChannels)
 {
     Track track;
@@ -54,10 +44,6 @@ void WaveMixer::addTrackAt(float timeInSec, const Wave& wav)
     addTrack(offset, wav);
 }
 
-/*!
- * \brief Returns the number of frames from index 0 to the rightmost frame of the last chunk.
- * \result The number of frames.
- */
 uint32_t WaveMixer::getNumFrames() const
 {
     uint32_t max = 0;
@@ -178,13 +164,6 @@ Wave WaveMixer::toWave_old()
     return result;
 }
 
-/*!
- * \brief Merges all of the Wave objects pointed to into a single Wave object.
- * \details The objects pointed to must not be destroyed or modified before calling this method.
- *          Muted tracks are silent. When any track is soloed, only soloed tracks are heard.
- *          Pan uses a linear law: full left at -1, centre at 0, full right at +1.
- * \result The merged Wave object.
- */
 Wave WaveMixer::toWave()
 {
     uint32_t numFrames = getNumFrames();

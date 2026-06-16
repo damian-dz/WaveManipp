@@ -1,5 +1,10 @@
 #pragma once
 
+/*!
+ * \file WaveProperties.hpp
+ * \brief WaveProperties container for RIFF/RIFX WAVE format metadata fields.
+ */
+
 #ifndef WAVE_PROPERTIES_H
 #define WAVE_PROPERTIES_H
 

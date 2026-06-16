@@ -3,9 +3,7 @@
 #include <cmath>
 
 namespace wm {
-/*!
- * \brief Constructs an empty Wave object with a zero-initialized header.
- */
+
 Wave::Wave() :
     m_isLittleEndian(true),
     m_numSamples(0)
@@ -13,10 +11,6 @@ Wave::Wave() :
     zeroInitHeader();
 }
 
-/*!
- * \brief Loads the specified file into a Wave object in its entirety.
- * \param filename &mdash; the name of the file
- */
 Wave::Wave(const char* filename) :
     m_isLittleEndian(true),
     m_numSamples(0)
@@ -25,10 +19,6 @@ Wave::Wave(const char* filename) :
     open(filename);
 }
 
-/*!
- * \brief Loads the specified file into a Wave object in its entirety.
- * \param filename &mdash; the name of the file
- */
 Wave::Wave(const std::string& filename) :
     m_isLittleEndian(true),
     m_numSamples(0)
@@ -51,10 +41,6 @@ Wave::Wave(uint32_t numFrames, uint16_t numChannels, uint16_t bitDepth, uint32_t
     m_waveProperties.setFmtChunkSize(16);
 }
 
-/*!
- * \brief Shares the audio buffer with the other Wave object (O(1), no copy).
- * \param other &mdash; the object to copy
- */
 Wave::Wave(const Wave& other) :
     m_header(other.m_header),
     m_dataSubChunk(other.m_dataSubChunk),
@@ -64,9 +50,6 @@ Wave::Wave(const Wave& other) :
     m_waveProperties(other.m_waveProperties)
 {}
 
-/*!
- * \brief Destroys the Wave object. The audio buffer is freed when the last owner is destroyed.
- */
 Wave::~Wave() = default;
 
 void Wave::setFourCharacterCodes()
@@ -160,9 +143,6 @@ void Wave::setWaveProperties(bool onlyDataChunk)
     }
 }
 
-/*!
- * \brief Detaches from a shared buffer by making a private copy.
- */
 void Wave::detach()
 {
     if (m_buffer && m_buffer.use_count() > 1) {
@@ -172,11 +152,6 @@ void Wave::detach()
     }
 }
 
-/*!
- * \brief Reserves enough memory to store the specified number of samples using floating-point format.
- * \param numSamples &mdash; the number of samples
- * \param zeroInit &mdash; specifies if memory should be set to zero
- */
 void Wave::reserveMemory(uint32_t numSamples, bool zeroInit)
 {
     if (numSamples == 0) {
@@ -189,11 +164,6 @@ void Wave::reserveMemory(uint32_t numSamples, bool zeroInit)
     }
 }
 
-/*!
- * \brief Resizes the block of memory to accommodate the specified number of samples using floating-point format.
- * \param numSamples &mdash; the new number of samples
- * \param zeroInit &mdash; specifies if any additional memory should be set to zero
- */
 void Wave::resizeMemory(uint32_t numSamples, bool zeroInit)
 {
     if (numSamples == m_numSamples) {
@@ -239,11 +209,6 @@ bool Wave::peekForId(const std::string& id, std::FILE* pFile)
     return res;
 }
 
-/*!
- * \brief Loads the file specified by its name into memory.
- * \param filename &mdash; the name of the file
- * \param bufferSize &mdash; the size of the intermediate read buffer (default 24576)
- */
 void Wave::open(const char* filename, uint32_t bufferSize)
 {
     std::FILE* pFile = std::fopen(filename, "rb");
@@ -420,11 +385,6 @@ void Wave::open(const char* filename, uint32_t bufferSize)
     std::fclose(pFile);
 }
 
-/*!
- * \brief Loads the file specified by its name into memory.
- * \param filename &mdash; the name of the file
- * \param bufferSize &mdash; the size of the intermediate read buffer (default 24576)
- */
 void Wave::open(const std::string& filename, uint32_t bufferSize)
 {
     open(filename.c_str(), bufferSize);
@@ -525,32 +485,17 @@ void Wave::readData(std::FILE* file, uint32_t bufferSize)
     std::free(pBuffer);
 }
 
-/*!
- * \brief Provides a constant pointer to the underlying audio data.
- * \result A <code>const</code> pointer to the audio data.
- */
 const float* Wave::constAudioData() const
 {
     return m_buffer.get();
 }
 
-/*!
- * \brief Provides a mutable pointer to the underlying audio data. Detaches from any shared buffer first.
- * \result A pointer to the audio data.
- */
 float* Wave::audioData()
 {
     detach();
     return m_buffer.get();
 }
 
-/*!
- * \brief Fetches a buffer from the Wave object as a vector of floating-point values.
- * \param offset &mdash; the sample offset for the specified channel
- * \param sampleCount &mdash; the number of samples to fetch
- * \param channel &mdash; the index of the channel
- * \result An std::vector of floating-point values.
- */
 std::vector<float> Wave::getBuffer(uint32_t offset, uint32_t sampleCount, int channel) const
 {
     std::vector<float> buffer(sampleCount);
@@ -562,14 +507,6 @@ std::vector<float> Wave::getBuffer(uint32_t offset, uint32_t sampleCount, int ch
     return buffer;
 }
 
-/*!
- * \brief Fetches a squeezed buffer from the Wave object as a vector of floating-point values.
- * \param offset &mdash; the sample offset for the specified channel
- * \param squeezedSampleCount &mdash; the number of samples after squeezing
- * \param squeezeFactor &mdash; the ratio between the original sample count and the squeezed sample count
- * \param channel &mdash; the index of the channel
- * \result An std::vector of floating-point values.
- */
 std::vector<float> Wave::getSqueezedBuffer(uint32_t offset, uint32_t squeezedSampleCount, float squeezeFactor,
                                            bool absolute, int channel, bool multiThreaded) const
 {
@@ -595,14 +532,6 @@ std::vector<float> Wave::getSqueezedBuffer(uint32_t offset, uint32_t squeezedSam
     return squeezedBuffer;
 }
 
-/*!
- * \brief Fetches a stretched buffer from the Wave object as a vector of floating-point values.
- * \param offset &mdash; the sample offset for the specified channel
- * \param squeezedSampleCount &mdash; the number of samples after stretching
- * \param squeezeFactor &mdash; the ratio between the stretched sample count and the original sample count
- * \param channel &mdash; the index of the channel
- * \result An std::vector of floating-point values.
- */
 std::vector<float> Wave::getStretchedBuffer(uint32_t offset, uint32_t stretchedSampleCount, float stretchFactor,
                                             int channel) const
 {
@@ -653,13 +582,6 @@ bool Wave::isEmpty() const
     return (!m_buffer || m_numSamples == 0);
 }
 
-/*!
- * \brief Appends the <i>other</i> Wave object to the current one.
- * \details If the current object has more than one channel and the other one is mono,
-            it is appended to each of the channels.
- * \param other &mdash; the object to append
- * \result A reference to itself.
- */
 Wave& Wave::append(const Wave& other)
 {
     if (other.getNumChannels() == getNumChannels()) {
@@ -700,9 +622,6 @@ void Wave::changeVolume(float volume, int channel)
     }
 }
 
-/*!
- * \brief Mixes the channels down to a mono track.
- */
 void Wave::downmixToMono()
 {
     uint32_t numSamples = getNumSamples();
@@ -743,14 +662,6 @@ Wave Wave::generateRandom(uint32_t numFrames, uint16_t bitDepth, uint32_t sample
     return result;
 }
 
-/*!
- * \brief Generates a single-channel sine wave.
- * \param waveFreq : the frequency of the wave, in Hz
- * \param phaseShift : the phase shift of the wave, in seconds
- * \param sampleRate : the sampling frequency, in Hz
- * \param numFrames : the number of audio frames to generate
- * \result The generated sine wave.
- */
 Wave Wave::generateSine(float waveFreq, float phaseShift, uint32_t numFrames,
     uint16_t bitDepth, uint32_t sampleRate, bool multiThreaded)
 {
@@ -765,14 +676,6 @@ Wave Wave::generateSine(float waveFreq, float phaseShift, uint32_t numFrames,
     return result;
 }
 
-/*!
- * \brief Generates a single-channel square wave.
- * \param waveFreq &mdash; the frequency of the wave, in Hz
- * \param phaseShift &mdash; the phase shift of the wave, in seconds
- * \param samplingFreq &mdash; the sampling frequency, in Hz
- * \param numFrames &mdash; the number of audio frames to generate
- * \result The generated square wave.
- */
 Wave Wave::generateSquare(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames,
                           bool multiThreaded)
 {
@@ -787,14 +690,6 @@ Wave Wave::generateSquare(float waveFreq, float phaseShift, uint32_t samplingFre
     return result;
 }
 
-/*!
- * \brief Generates a single-channel triangle wave.
- * \param waveFreq &mdash; the frequency of the wave, in Hz
- * \param phaseShift &mdash; the phase shift of the wave, in seconds
- * \param samplingFreq &mdash; the sampling frequency, in Hz
- * \param numFrames &mdash; the number of audio frames to generate
- * \result The generated triangle wave.
- */
 Wave Wave::generateTriangle(float waveFreq, float phaseShift, uint32_t samplingFreq, uint32_t numFrames,
                             bool multiThreaded)
 {
@@ -869,10 +764,6 @@ std::vector<float> Wave::getAveragedOutData(uint32_t binSize, bool absolute, int
     return result;
 }
 
-/*!
- * \brief Checks if the Wave object is set to be stored using little-endian representation.
- * \result <code>true</code> if it is little-endian (RIFF), <code>false</code> if it is big-endian (RIFX).
- */
 bool Wave::isLittleEndian() const
 {
     return m_isLittleEndian;
@@ -1008,9 +899,6 @@ void Wave::swapChannels(int from, int to)
     }
 }
 
-/*!
- * \brief Turns the mono track into a stereo one.
- */
 void Wave::upmixToStereo()
 {
     uint32_t numSamples = getNumSamples();
@@ -1039,30 +927,16 @@ void Wave::zeroInitHeader()
     std::memset(&m_dataSubChunk, 0, sizeof(DataSubChunk));
 }
 
-/*!
- * \brief Gets the number of bytes necessary to store the audio data with the current settings.
- * \result The data chunk size.
- */
 uint32_t Wave::getDataChunkSize() const
 {
     return m_waveProperties.getDataChunkSize();
 }
 
-/*!
- * \brief Gets the number of channels for the audio data.
- * \result The number of channels.
- */
 uint16_t Wave::getNumChannels() const
 {
     return m_waveProperties.getNumChannels();
 }
 
-/*!
- * \brief Gets the number of frames for the audio data.
- * \details An audio frame comprises all samples that are played at the same time.
-            For a stereo track, the number of frames is the number of samples divided by two.
- * \result The number of frames.
- */
 uint32_t Wave::getNumFrames() const
 {
     return m_numSamples / m_waveProperties.getNumChannels();
@@ -1073,10 +947,6 @@ uint32_t Wave::getNumSamples() const
     return m_numSamples;
 }
 
-/*!
- * \brief Gets the number of bits currently used to represent a single audio sample.
- * \result The sample bit depth.
- */
 uint16_t Wave::getSampleBitDepth() const
 {
     return m_waveProperties.getNumBitsPerSample();

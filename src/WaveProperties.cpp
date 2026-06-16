@@ -1,9 +1,6 @@
 #include "WaveProperties.hpp"
 
 namespace wm {
-/*!
- * \brief Creates an empty (zero-initialized) instance of WaveProperties.
- */
 WaveProperties::WaveProperties() :
     m_riffChunkSize(0),
     m_fmtChunkSize(0),
@@ -38,21 +35,11 @@ void WaveProperties::setNumChannels(uint16_t numChannels)
     m_numChannels = numChannels;
 }
 
-/*!
- * \brief Sets the sampling frequency for the audio data.
- * \details Also known as <i>sampling rate</i> and <i>sample rate</i>.
- * \param samplingFrequency &mdash; the new sampling frequency
- */
 void WaveProperties::setSamplingFrequency(uint32_t samplingFrequency)
 {
     m_samplingFrequency = samplingFrequency;
 }
 
-/*!
- * \brief Sets the number of bytes necessary to store one second of the audio data.
- * \details Also known as <i>byte rate</i>.
- * \param numBytesPerSecond &mdash; the new number of bytes per second
- */
 void WaveProperties::setNumBytesPerSecond(uint32_t numBytesPerSecond)
 {
     m_numBytesPerSecond = numBytesPerSecond;
@@ -63,11 +50,6 @@ void WaveProperties::setBlockAlign(uint16_t blockAlign)
     m_blockAlign = blockAlign;
 }
 
-/*!
- * \brief Sets the number of bits required to represent each audio sample.
- * \details Also known as <i>sample bit depth</i>.
- * \param numBitsPerSample &mdash; the new number of bits per sample
- */
 void WaveProperties::setNumBitsPerSample(uint16_t numBitsPerSample)
 {
     m_numBitsPerSample = numBitsPerSample;
