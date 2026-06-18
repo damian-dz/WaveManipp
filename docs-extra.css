@@ -1,0 +1,5 @@
+/* Left-align the return-type column so all function names line up */
+td.memItemLeft,
+td.memTemplItemLeft {
+    text-align: left;
+}
