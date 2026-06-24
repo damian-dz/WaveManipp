@@ -3,6 +3,7 @@ bin/
 Debug/
 Release/
 dox/
+docs/
 testing/
 WaveManipp/
 x64/
