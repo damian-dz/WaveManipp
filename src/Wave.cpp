@@ -34,7 +34,7 @@ Wave::Wave(uint32_t numFrames, uint16_t numChannels, uint16_t bitDepth, uint32_t
     zeroInitHeader();
     setFourCharacterCodes();
     m_waveProperties.setNumChannels(numChannels);
-    reserveMemory(m_numSamples);
+    reserveMemory(m_numSamples, true);
     setSampleRate(sampleRate);
     setSampleBitDepth(bitDepth);
     m_waveProperties.setRiffChunkSize(m_waveProperties.getDataChunkSize() + 36);
