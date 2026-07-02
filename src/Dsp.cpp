@@ -34,18 +34,20 @@ void applyGain(Wave& wave, float linearGain)
 {
     const uint16_t nc = wave.getNumChannels();
     const uint32_t nf = wave.getNumFrames();
+    float* buf = wave.audioData(); // bump the content revision once, not per sample
     for (uint32_t fr = 0; fr < nf; ++fr)
         for (uint16_t ch = 0; ch < nc; ++ch)
-            wave(fr, static_cast<int>(ch)) *= linearGain;
+            buf[fr * nc + ch] *= linearGain;
 }
 
 void applyGainRange(Wave& wave, uint32_t startFrame, uint32_t endFrame, float linearGain)
 {
     const uint16_t nc  = wave.getNumChannels();
     const uint32_t end = std::min(endFrame, wave.getNumFrames());
+    float* buf = wave.audioData(); // bump the content revision once, not per sample
     for (uint32_t fr = startFrame; fr < end; ++fr)
         for (uint16_t ch = 0; ch < nc; ++ch)
-            wave(fr, static_cast<int>(ch)) *= linearGain;
+            buf[fr * nc + ch] *= linearGain;
 }
 
 void normalize(Wave& wave, float targetDb)
@@ -66,9 +68,10 @@ void silence(Wave& wave, uint32_t startFrame, uint32_t endFrame)
 {
     const uint16_t nc  = wave.getNumChannels();
     const uint32_t end = std::min(endFrame, wave.getNumFrames());
+    float* buf = wave.audioData(); // bump the content revision once, not per sample
     for (uint32_t fr = startFrame; fr < end; ++fr)
         for (uint16_t ch = 0; ch < nc; ++ch)
-            wave(fr, static_cast<int>(ch)) = 0.f;
+            buf[fr * nc + ch] = 0.f;
 }
 
 void changeSpeed(Wave& wave, float factor)
@@ -109,10 +112,11 @@ void fadeIn(Wave& wave, uint32_t startFrame, uint32_t endFrame, FadeCurve curve)
     const uint32_t end = std::min(endFrame, wave.getNumFrames());
     if (startFrame >= end) return;
     const float len = static_cast<float>(end - startFrame);
+    float* buf = wave.audioData(); // bump the content revision once, not per sample
     for (uint32_t fr = startFrame; fr < end; ++fr) {
         const float gain = fadeGain(curve, static_cast<float>(fr - startFrame) / len);
         for (uint16_t ch = 0; ch < nc; ++ch)
-            wave(fr, static_cast<int>(ch)) *= gain;
+            buf[fr * nc + ch] *= gain;
     }
 }
 
@@ -122,10 +126,11 @@ void fadeOut(Wave& wave, uint32_t startFrame, uint32_t endFrame, FadeCurve curve
     const uint32_t end = std::min(endFrame, wave.getNumFrames());
     if (startFrame >= end) return;
     const float len = static_cast<float>(end - startFrame);
+    float* buf = wave.audioData(); // bump the content revision once, not per sample
     for (uint32_t fr = startFrame; fr < end; ++fr) {
         const float gain = fadeGain(curve, 1.f - static_cast<float>(fr - startFrame) / len);
         for (uint16_t ch = 0; ch < nc; ++ch)
-            wave(fr, static_cast<int>(ch)) *= gain;
+            buf[fr * nc + ch] *= gain;
     }
 }
 
@@ -186,6 +191,7 @@ void reverb(Wave& wave, uint32_t startFrame, uint32_t endFrame, const ReverbPara
     const float wet      = params.wetMix;
     const float dry      = 1.f - wet;
 
+    float* buf = wave.audioData(); // bump the content revision once, not per sample
     for (uint16_t ch = 0; ch < nc; ++ch) {
         CombFilter    combs[kNumCombs];
         AllpassFilter aps[kNumAp];
@@ -196,14 +202,14 @@ void reverb(Wave& wave, uint32_t startFrame, uint32_t endFrame, const ReverbPara
             aps[i].init(static_cast<size_t>(kApDelays[i] * scale + 0.5f));
 
         for (uint32_t fr = startFrame; fr < end; ++fr) {
-            const float input = wave(fr, ch);
+            const float input = buf[fr * nc + ch];
             float out = 0.f;
             for (int i = 0; i < kNumCombs; ++i)
                 out += combs[i].process(input, feedback, damp1, damp2);
             out *= 0.125f; // normalize 8 summed combs
             for (int i = 0; i < kNumAp; ++i)
                 out = aps[i].process(out);
-            wave(fr, ch) = dry * input + wet * out;
+            buf[fr * nc + ch] = dry * input + wet * out;
         }
     }
 }
@@ -286,11 +292,13 @@ std::vector<std::vector<float>> stftMagnitudeDb(const Wave& wave, const StftConf
 
 void reverseChannel(Wave& wave, int channel)
 {
+    const uint16_t nc = wave.getNumChannels();
     int lo = 0;
     int hi = static_cast<int>(wave.getNumFrames()) - 1;
+    float* buf = wave.audioData(); // bump the content revision once, not per sample
     while (lo < hi) {
-        std::swap(wave(static_cast<uint32_t>(lo), channel),
-                  wave(static_cast<uint32_t>(hi), channel));
+        std::swap(buf[static_cast<uint32_t>(lo) * nc + channel],
+                  buf[static_cast<uint32_t>(hi) * nc + channel]);
         ++lo; --hi;
     }
 }
@@ -365,12 +373,13 @@ void processBiquadRange(Wave& wave, uint32_t startFrame, uint32_t endFrame, cons
     const uint16_t nc  = wave.getNumChannels();
     const uint32_t end = std::min(endFrame, wave.getNumFrames());
     if (startFrame >= end) return;
+    float* buf = wave.audioData(); // bump the content revision once, not per sample
     for (uint16_t ch = 0; ch < nc; ++ch) {
         float x1 = 0.f, x2 = 0.f, y1 = 0.f, y2 = 0.f;
         for (uint32_t fr = startFrame; fr < end; ++fr) {
-            const float x0 = wave(fr, static_cast<int>(ch));
+            const float x0 = buf[fr * nc + ch];
             const float y0 = c.b0*x0 + c.b1*x1 + c.b2*x2 - c.a1*y1 - c.a2*y2;
-            wave(fr, static_cast<int>(ch)) = y0;
+            buf[fr * nc + ch] = y0;
             x2 = x1; x1 = x0;
             y2 = y1; y1 = y0;
         }

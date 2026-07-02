@@ -22,6 +22,9 @@ namespace wm {
  *
  * Copy construction and assignment are shallow and share the audio buffer. Mutating
  * methods detach from shared storage before writing.
+ *
+ * Each Wave carries an opaque \ref contentRevision "content revision" token used to
+ * detect staleness in external caches (e.g. a derived analysis kept alongside a Wave).
  */
 class WAVEMANIPPAPI Wave
 {
@@ -64,8 +67,13 @@ private:
     uint32_t m_numSamples;
     std::shared_ptr<float[]> m_buffer;
     WaveProperties m_waveProperties;
+    uint64_t m_revision;
 
+    static uint64_t allocateRevision();
     void detach();
+    /*! \brief Detaches from shared storage (if needed) and assigns a fresh
+        \ref contentRevision. Call once per logical mutation, not per sample. */
+    void prepareForWrite();
     void copySamples(const float* source, float* destination, uint32_t count, uint32_t srcOffset = 0,
                      uint32_t destOffset = 0);
     void generateHeader();
@@ -117,8 +125,33 @@ public:
 
     /*! \brief Returns a read-only pointer to interleaved normalized float samples. */
     const float* constAudioData() const;
-    /*! \brief Returns a mutable pointer to interleaved normalized float samples, detaching if shared. */
+    /*!
+     * \brief Returns a mutable pointer to interleaved normalized float samples, detaching
+     * if shared, and assigns a fresh \ref contentRevision.
+     * \details The returned pointer must not survive the immediate editing operation: do
+     * not retain it across copies of this Wave, across a call to any other Wave method, or
+     * across submitting this Wave to a background cache-build job. Writing through a
+     * retained pointer later mutates content invisibly to \ref contentRevision -- there is
+     * no way to detect it. This method provides no thread-safety guarantee; Wave mutation
+     * is assumed to happen on a single thread.
+     */
     float* audioData();
+    /*!
+     * \brief Returns an opaque, process-local revision token.
+     * \details Meaningful only via equality comparison: a different value than one
+     * previously observed means the sample data or sample rate may have changed since.
+     * This is not a content hash -- two independently created Waves with identical PCM
+     * are not required to share a revision, and a revision must never be serialized or
+     * compared across process runs. The token changes when PCM samples are mutated, when
+     * the sample buffer is reallocated or replaced, or when setSampleRate() changes the
+     * sample rate (both affect how the same float data should be interpreted). It does not
+     * change for setSampleBitDepth() or setLittleEndian(), which only affect file
+     * serialization, not decoded sample values. Shallow copies (copy construction,
+     * operator=) preserve the source's revision, so restoring a whole-Wave snapshot (e.g.
+     * for undo) restores its original revision too. Provides no thread-safety guarantee --
+     * see the \ref audioData() caveat about retained mutable pointers.
+     */
+    uint64_t contentRevision() const noexcept;
 
     /*! \brief Appends another Wave's audio after this Wave. \param other Source wave to append. */
     Wave& append(const Wave& other);

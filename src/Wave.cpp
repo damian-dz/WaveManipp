@@ -1,19 +1,31 @@
 #include "Wave.hpp"
 #include "Dsp.hpp"
+#include <atomic>
 #include <cmath>
 
 namespace wm {
 
+namespace {
+std::atomic<uint64_t> g_nextWaveRevision{1};
+} // namespace
+
+uint64_t Wave::allocateRevision()
+{
+    return g_nextWaveRevision.fetch_add(1, std::memory_order_relaxed);
+}
+
 Wave::Wave() :
     m_isLittleEndian(true),
-    m_numSamples(0)
+    m_numSamples(0),
+    m_revision(allocateRevision())
 {
     zeroInitHeader();
 }
 
 Wave::Wave(const char* filename) :
     m_isLittleEndian(true),
-    m_numSamples(0)
+    m_numSamples(0),
+    m_revision(allocateRevision())
 {
     zeroInitHeader();
     open(filename);
@@ -21,7 +33,8 @@ Wave::Wave(const char* filename) :
 
 Wave::Wave(const std::string& filename) :
     m_isLittleEndian(true),
-    m_numSamples(0)
+    m_numSamples(0),
+    m_revision(allocateRevision())
 {
     zeroInitHeader();
     open(filename);
@@ -29,7 +42,8 @@ Wave::Wave(const std::string& filename) :
 
 Wave::Wave(uint32_t numFrames, uint16_t numChannels, uint16_t bitDepth, uint32_t sampleRate) :
     m_isLittleEndian(true),
-    m_numSamples(numChannels * numFrames)
+    m_numSamples(numChannels * numFrames),
+    m_revision(allocateRevision())
 {
     zeroInitHeader();
     setFourCharacterCodes();
@@ -47,7 +61,8 @@ Wave::Wave(const Wave& other) :
     m_isLittleEndian(other.m_isLittleEndian),
     m_numSamples(other.m_numSamples),
     m_buffer(other.m_buffer),
-    m_waveProperties(other.m_waveProperties)
+    m_waveProperties(other.m_waveProperties),
+    m_revision(other.m_revision)
 {}
 
 Wave::~Wave() = default;
@@ -152,16 +167,24 @@ void Wave::detach()
     }
 }
 
+void Wave::prepareForWrite()
+{
+    detach();
+    m_revision = allocateRevision();
+}
+
 void Wave::reserveMemory(uint32_t numSamples, bool zeroInit)
 {
     if (numSamples == 0) {
         m_buffer.reset();
+        m_revision = allocateRevision();
         return;
     }
     m_buffer = std::shared_ptr<float[]>(new float[numSamples]);
     if (zeroInit) {
         std::memset(m_buffer.get(), 0, numSamples * sizeof(float));
     }
+    m_revision = allocateRevision();
 }
 
 void Wave::resizeMemory(uint32_t numSamples, bool zeroInit)
@@ -186,6 +209,7 @@ void Wave::resizeMemory(uint32_t numSamples, bool zeroInit)
         }
         m_buffer = std::move(newBuffer);
     }
+    m_revision = allocateRevision();
 }
 
 void Wave::copySamples(const float* source, float* destination, uint32_t count, uint32_t srcOffset,
@@ -392,6 +416,10 @@ void Wave::open(const std::string& filename, uint32_t bufferSize)
 
 void Wave::readData(std::FILE* file, uint32_t bufferSize)
 {
+    // Public and independently callable -- must not rely on a caller (e.g. open())
+    // having already bumped the revision via reserveMemory().
+    m_revision = allocateRevision();
+
     uint8_t* pBuffer = reinterpret_cast<uint8_t*>(std::malloc(bufferSize));
     if (pBuffer == nullptr) {
         throwError("Failed to create a buffer.",
@@ -492,7 +520,7 @@ const float* Wave::constAudioData() const
 
 float* Wave::audioData()
 {
-    detach();
+    prepareForWrite();
     return m_buffer.get();
 }
 
@@ -568,7 +596,7 @@ float Wave::getAbsPeak(int channel) const
 
 void Wave::insertAudio(uint32_t offset, const float* audio, uint32_t numSamples)
 {
-    detach();
+    prepareForWrite();
     std::memcpy(m_buffer.get() + offset, audio, numSamples * sizeof(float));
 }
 
@@ -613,7 +641,7 @@ float Wave::avgValue(int channel) const
 
 void Wave::changeVolume(float volume, int channel)
 {
-    detach();
+    prepareForWrite();
     uint16_t numChannels = m_waveProperties.getNumChannels();
     float max = getAbsPeak(channel);
     float factor = volume / max;
@@ -637,6 +665,7 @@ void Wave::downmixToMono()
         newBuffer[y / numChannels] = sum / float(numChannels);
     }
     m_buffer = std::move(newBuffer);
+    m_revision = allocateRevision();
     m_waveProperties.setBlockAlign(m_waveProperties.getBlockAlign() / numChannels);
     m_waveProperties.setNumBytesPerSecond(m_waveProperties.getNumBytesPerSecond() / numChannels);
     m_waveProperties.setRiffChunkSize(newDataChunkSize + 36);
@@ -806,7 +835,7 @@ float Wave::minValue(int channel) const
 
 void Wave::reverse(int channel)
 {
-    detach();
+    prepareForWrite();
     dsp::reverseChannel(*this, channel);
 }
 
@@ -862,7 +891,7 @@ void Wave::setAudio(const float* audio, uint32_t numSamples)
     if (numSamples != m_numSamples) {
         resizeMemory(numSamples, false);
     } else {
-        detach();
+        prepareForWrite();
     }
     if (numSamples == 0 || audio == nullptr) {
         return;
@@ -882,7 +911,7 @@ void Wave::setLittleEndian(bool isLittleEndian)
 
 void Wave::swapChannels(int from, int to)
 {
-    detach();
+    prepareForWrite();
     uint32_t numSamples = getNumSamples();
     uint16_t numChannels = getNumChannels();
     if (numChannels < 2) {
@@ -913,6 +942,7 @@ void Wave::upmixToStereo()
         }
     }
     m_buffer = std::move(newBuffer);
+    m_revision = allocateRevision();
     m_waveProperties.setBlockAlign(m_waveProperties.getBlockAlign() * numChannels);
     m_waveProperties.setNumBytesPerSecond(m_waveProperties.getNumBytesPerSecond() * numChannels);
     m_waveProperties.setRiffChunkSize(newDataChunkSize + 36);
@@ -1083,11 +1113,17 @@ void Wave::setSampleBitDepth(uint16_t sampleBitDepth)
 void Wave::setSampleRate(uint32_t sampleRate)
 {
     m_waveProperties.setSamplingFrequency(sampleRate);
+    m_revision = allocateRevision();
+}
+
+uint64_t Wave::contentRevision() const noexcept
+{
+    return m_revision;
 }
 
 float& Wave::operator()(uint32_t sample, int channel)
 {
-    detach();
+    prepareForWrite();
     return m_buffer[sample * m_waveProperties.getNumChannels() + channel];
 }
 
@@ -1107,6 +1143,7 @@ void Wave::operator=(const Wave& other)
     m_numSamples    = other.m_numSamples;
     m_waveProperties = other.m_waveProperties;
     m_buffer        = other.m_buffer;
+    m_revision      = other.m_revision;
 }
 
 std::ostream& operator<<(std::ostream& os, const Wave& wav)
