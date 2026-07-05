@@ -11,6 +11,7 @@ add_library(WaveManipp STATIC
     src/RecordingBuffer.cpp
     src/WaveFileFormat.cpp
     src/WaveFileReader.cpp
+    src/WaveFileWriter.cpp
 )
 
 target_include_directories(WaveManipp PUBLIC api)
@@ -39,6 +40,7 @@ add_executable(WaveManipp_tests
     tests/WaveManippTestMain.cpp
     tests/WaveRevisionTests.cpp
     tests/WaveFileReaderTests.cpp
+    tests/WaveFileWriterTests.cpp
 )
 target_include_directories(WaveManipp_tests PRIVATE src)
 target_link_libraries(WaveManipp_tests PRIVATE WaveManipp doctest::doctest)
@@ -48,3 +50,14 @@ endif()
 
 include(CTest)
 add_test(NAME WaveManipp_tests COMMAND WaveManipp_tests)
+
+# Manual dev tool, not run by ctest and excluded from normal builds (EXCLUDE_FROM_ALL):
+# lets an external process kill a multi-block WaveFileWriter write mid-stream, then
+# verifies the last checkpoint left a valid, readable file (docs/AUDIO_STREAMING_PLAN.md's
+# recoverable-prefix contract). Build explicitly with
+# `cmake --build . --target WaveFileWriterInterruptDemo`.
+add_executable(WaveFileWriterInterruptDemo EXCLUDE_FROM_ALL tests/manual/WaveFileWriterInterruptDemo.cpp)
+target_link_libraries(WaveFileWriterInterruptDemo PRIVATE WaveManipp)
+if(MSVC)
+    target_compile_definitions(WaveFileWriterInterruptDemo PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()

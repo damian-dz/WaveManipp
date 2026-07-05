@@ -10,6 +10,7 @@
 
 #include "WaveBuilder.hpp"
 #include "WaveFileReader.hpp"
+#include "WaveFileWriter.hpp"
 #include "WaveMixer.hpp"
 #include "RecordingBuffer.hpp"
 #include "Dsp.hpp"
