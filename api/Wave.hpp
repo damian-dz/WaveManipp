@@ -82,7 +82,6 @@ private:
     bool isCpuBigEndian() const;
     bool peekForId(const std::string& id, std::FILE* pFile);
     void setFourCharacterCodes();
-    void setWaveProperties(bool onlyDataChunk = false);
 
 public:
     /*! \brief Creates an empty wave with a zero-initialized header. */

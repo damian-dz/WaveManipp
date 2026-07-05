@@ -9,6 +9,8 @@ add_library(WaveManipp STATIC
     src/WaveMixer.cpp
     src/WaveProperties.cpp
     src/RecordingBuffer.cpp
+    src/WaveFileFormat.cpp
+    src/WaveFileReader.cpp
 )
 
 target_include_directories(WaveManipp PUBLIC api)
