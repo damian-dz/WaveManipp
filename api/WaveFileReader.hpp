@@ -100,7 +100,7 @@ public:
 
 private:
     std::FILE* m_file = nullptr;
-    long m_dataPosition = 0;
+    uint64_t m_dataPosition = 0;
     bool m_isLittleEndian = true;
     uint16_t m_audioFormat = 0;
     uint16_t m_numChannels = 0;

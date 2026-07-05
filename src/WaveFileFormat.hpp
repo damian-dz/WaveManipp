@@ -53,6 +53,21 @@ struct WaveFileInfo {
  */
 WaveFileInfo parseWaveFile(std::FILE* file);
 
+/*!
+ * \brief Seeks to an absolute byte offset without narrowing to 32-bit long.
+ * \return true on success, false when the offset is not representable or the
+ * underlying seek fails.
+ */
+bool seekFile(std::FILE* file, uint64_t offset) noexcept;
+
+/*!
+ * \brief Reports the current absolute byte offset without narrowing it.
+ * \param file   Open file whose position is queried.
+ * \param offset Receives the non-negative byte offset on success.
+ * \return true on success.
+ */
+bool tellFile(std::FILE* file, uint64_t& offset) noexcept;
+
 //! Returns true when the running CPU is big-endian.
 bool isCpuBigEndian();
 

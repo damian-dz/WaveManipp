@@ -3,7 +3,12 @@
 #include "utils.hpp"
 
 #include <cstring>
+#include <limits>
 #include <vector>
+
+#ifndef _WIN32
+#include <sys/types.h>
+#endif
 
 namespace wm::detail {
 
@@ -23,7 +28,75 @@ struct FmtChunkBody {
     uint16_t bitsPerSample;
 };
 
+bool addWithoutOverflow(uint64_t lhs, uint64_t rhs, uint64_t& result)
+{
+    if (rhs > std::numeric_limits<uint64_t>::max() - lhs) {
+        return false;
+    }
+    result = lhs + rhs;
+    return true;
+}
+
+bool getFileSize(std::FILE* file, uint64_t& size)
+{
+    uint64_t originalPosition = 0;
+    if (!tellFile(file, originalPosition)) {
+        return false;
+    }
+
+#ifdef _WIN32
+    if (_fseeki64(file, 0, SEEK_END) != 0) {
+        return false;
+    }
+#else
+    if (::fseeko(file, 0, SEEK_END) != 0) {
+        return false;
+    }
+#endif
+
+    const bool measured = tellFile(file, size);
+    const bool restored = seekFile(file, originalPosition);
+    return measured && restored;
+}
+
 } // namespace
+
+bool seekFile(std::FILE* file, uint64_t offset) noexcept
+{
+    if (!file) {
+        return false;
+    }
+
+#ifdef _WIN32
+    if (offset > uint64_t(std::numeric_limits<__int64>::max())) {
+        return false;
+    }
+    return _fseeki64(file, static_cast<__int64>(offset), SEEK_SET) == 0;
+#else
+    if (offset > uint64_t(std::numeric_limits<off_t>::max())) {
+        return false;
+    }
+    return ::fseeko(file, static_cast<off_t>(offset), SEEK_SET) == 0;
+#endif
+}
+
+bool tellFile(std::FILE* file, uint64_t& offset) noexcept
+{
+    if (!file) {
+        return false;
+    }
+
+#ifdef _WIN32
+    const __int64 position = _ftelli64(file);
+#else
+    const off_t position = ::ftello(file);
+#endif
+    if (position < 0) {
+        return false;
+    }
+    offset = static_cast<uint64_t>(position);
+    return true;
+}
 
 bool isCpuBigEndian()
 {
@@ -49,6 +122,11 @@ void changeBufferEndianness(uint8_t* buffer, uint32_t sampleSize, uint32_t buffe
 
 WaveFileInfo parseWaveFile(std::FILE* file)
 {
+    uint64_t fileSize = 0;
+    if (!getFileSize(file, fileSize) || !seekFile(file, 0)) {
+        throwError("Failed to inspect WAV file size.", "wm::detail::parseWaveFile");
+    }
+
     struct RiffHeader {
         Descriptor descriptor;
         char type[4];
@@ -83,15 +161,27 @@ WaveFileInfo parseWaveFile(std::FILE* file)
     info.isLittleEndian = isLittleEndian;
     info.riffChunkSize = decodeU32(riff.descriptor.size);
 
+    uint64_t riffEnd = 0;
+    if (info.riffChunkSize < 4 || !addWithoutOverflow(8, info.riffChunkSize, riffEnd) || riffEnd > fileSize) {
+        throwError("RIFF chunk exceeds the file size.", "wm::detail::parseWaveFile");
+    }
+
     bool foundFmtChunk = false;
     bool foundDataChunk = false;
-    long dataPosition = 0;
+    uint64_t dataPosition = 0;
     uint32_t dataChunkSize = 0;
     FmtChunkBody fmt{};
     uint32_t fmtChunkSize = 0;
     const uint16_t waveFormatExtensible = 0xFFFE;
 
     while (!foundDataChunk || !foundFmtChunk) {
+        uint64_t descriptorPosition = 0;
+        uint64_t descriptorEnd = 0;
+        if (!tellFile(file, descriptorPosition) ||
+            !addWithoutOverflow(descriptorPosition, sizeof(Descriptor), descriptorEnd) || descriptorEnd > riffEnd) {
+            break;
+        }
+
         Descriptor descriptor{};
         size_t bytesRead = std::fread(&descriptor, 1, sizeof(Descriptor), file);
         if (bytesRead == 0 && std::feof(file)) {
@@ -102,9 +192,14 @@ WaveFileInfo parseWaveFile(std::FILE* file)
         }
 
         uint32_t chunkSize = decodeU32(descriptor.size);
-        long chunkDataPosition = std::ftell(file);
-        if (chunkDataPosition < 0) {
+        uint64_t chunkDataPosition = 0;
+        if (!tellFile(file, chunkDataPosition)) {
             throwError("Failed to inspect WAV chunk position.", "wm::detail::parseWaveFile");
+        }
+
+        uint64_t chunkEnd = 0;
+        if (!addWithoutOverflow(chunkDataPosition, chunkSize, chunkEnd) || chunkEnd > riffEnd || chunkEnd > fileSize) {
+            throwError("WAV chunk exceeds the file size.", "wm::detail::parseWaveFile");
         }
 
         if (std::memcmp(descriptor.id, "fmt ", 4) == 0) {
@@ -154,12 +249,18 @@ WaveFileInfo parseWaveFile(std::FILE* file)
             foundFmtChunk = true;
         } else if (std::memcmp(descriptor.id, "data", 4) == 0) {
             dataChunkSize = chunkSize;
-            dataPosition = std::ftell(file);
+            dataPosition = chunkDataPosition;
             foundDataChunk = true;
         }
 
-        uint32_t paddingByte = chunkSize % 2;
-        if (std::fseek(file, chunkDataPosition + chunkSize + paddingByte, SEEK_SET) != 0) {
+        if (foundFmtChunk && foundDataChunk) {
+            break;
+        }
+
+        const uint32_t paddingByte = chunkSize % 2;
+        uint64_t nextChunkPosition = 0;
+        if (!addWithoutOverflow(chunkEnd, paddingByte, nextChunkPosition) ||
+            nextChunkPosition > riffEnd || nextChunkPosition > fileSize || !seekFile(file, nextChunkPosition)) {
             throwError("WAV chunk exceeds the file size.", "wm::detail::parseWaveFile");
         }
     }
@@ -191,7 +292,7 @@ WaveFileInfo parseWaveFile(std::FILE* file)
     info.blockAlign = fmt.blockAlign;
     info.bitsPerSample = fmt.bitsPerSample;
     info.dataChunkSize = dataChunkSize;
-    info.dataOffset = static_cast<uint64_t>(dataPosition);
+    info.dataOffset = dataPosition;
     return info;
 }
 

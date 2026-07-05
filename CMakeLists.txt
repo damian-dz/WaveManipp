@@ -40,6 +40,7 @@ add_executable(WaveManipp_tests
     tests/WaveRevisionTests.cpp
     tests/WaveFileReaderTests.cpp
 )
+target_include_directories(WaveManipp_tests PRIVATE src)
 target_link_libraries(WaveManipp_tests PRIVATE WaveManipp doctest::doctest)
 if(MSVC)
     target_compile_definitions(WaveManipp_tests PRIVATE _CRT_SECURE_NO_WARNINGS)

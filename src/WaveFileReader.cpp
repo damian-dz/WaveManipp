@@ -1,4 +1,5 @@
 #include "WaveFileReader.hpp"
+#include "PcmCodec.hpp"
 #include "WaveFileFormat.hpp"
 
 #include <algorithm>
@@ -73,7 +74,7 @@ void WaveFileReader::open(const char* filename)
     const uint16_t bytesPerSample = info.bitsPerSample / 8;
     const uint32_t frameSize = uint32_t(info.numChannels) * bytesPerSample;
 
-    m_dataPosition = static_cast<long>(info.dataOffset);
+    m_dataPosition = info.dataOffset;
     m_isLittleEndian = info.isLittleEndian;
     m_audioFormat = info.audioFormat;
     m_numChannels = info.numChannels;
@@ -140,7 +141,7 @@ uint32_t WaveFileReader::readFrames(uint64_t startFrame, uint32_t frameCount, fl
     const uint32_t frameSize = uint32_t(m_numChannels) * bytesPerSample;
     const uint64_t byteOffset = uint64_t(m_dataPosition) + startFrame * frameSize;
 
-    if (std::fseek(m_file, static_cast<long>(byteOffset), SEEK_SET) != 0) {
+    if (!detail::seekFile(m_file, byteOffset)) {
         return 0;
     }
 
@@ -160,7 +161,7 @@ uint32_t WaveFileReader::readFrames(uint64_t startFrame, uint32_t frameCount, fl
 
     if (m_bitsPerSample == 8) {
         for (uint32_t i = 0; i < samplesToDecode; ++i) {
-            interleavedDestination[i] = raw[i] / 127.5f - 1.f;
+            interleavedDestination[i] = detail::decodePcm8Sample<float>(raw[i]);
         }
     } else if (m_bitsPerSample == 16) {
         if (isEndiannessMismatched) {
@@ -168,15 +169,12 @@ uint32_t WaveFileReader::readFrames(uint64_t startFrame, uint32_t frameCount, fl
         }
         const int16_t* src = reinterpret_cast<const int16_t*>(raw);
         for (uint32_t i = 0; i < samplesToDecode; ++i) {
-            interleavedDestination[i] = src[i] / 32768.f;
+            interleavedDestination[i] = detail::dequantizeSignedPcm<float, 16>(src[i]);
         }
     } else if (m_bitsPerSample == 24) {
-        if (isEndiannessMismatched) {
-            detail::changeBufferEndianness(raw, 3, uint32_t(bytesRead));
-        }
         for (uint32_t i = 0; i < samplesToDecode; ++i) {
-            uint32_t j = i * 3;
-            interleavedDestination[i] = (raw[j] << 8 | raw[j + 1] << 16 | raw[j + 2] << 24) / 2147483648.f;
+            const uint32_t byteIndex = i * 3;
+            interleavedDestination[i] = detail::decodePcm24Sample<float>(raw + byteIndex, m_isLittleEndian);
         }
     } else if (m_bitsPerSample == 32) {
         if (isEndiannessMismatched) {

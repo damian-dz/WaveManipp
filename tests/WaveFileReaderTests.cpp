@@ -1,27 +1,111 @@
 #include <doctest/doctest.h>
 
+#include "PcmCodec.hpp"
 #include "WaveFileReader.hpp"
+#include "WaveFileFormat.hpp"
 #include "Wave.hpp"
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <vector>
 
 // docs/AUDIO_STREAMING_PLAN.md Milestone 1 item 4: wm::WaveFileReader parses WAVE
 // metadata without decoding the whole data chunk, then converts bounded frame ranges
-// to normalized interleaved floats on demand. Per the plan's own test-plan bullet,
-// these tests compare its output against wm::Wave::open() (the existing, already-
-// trusted full-file decoder) across every supported encoding, endianness, an odd
-// chunk layout, a truncated file, and boundary reads -- rather than re-deriving
-// correctness independently.
+// to normalized interleaved floats on demand. Wave and WaveFileReader share the private
+// header parser and integer PCM codec, so handcrafted fixtures and direct codec tests
+// assert independently-known metadata, integer codes, byte order, and sample values;
+// Wave comparisons remain useful integration-consistency checks.
 
 namespace {
 
 std::filesystem::path tempWavPath(const char* suffix)
 {
     return std::filesystem::temp_directory_path() / (std::string("wavemanipp_wfr_test_") + suffix + ".wav");
+}
+
+void writeU16(std::ofstream& out, uint16_t value, bool littleEndian)
+{
+    const uint8_t bytes[2] = {
+        uint8_t(littleEndian ? value : value >> 8),
+        uint8_t(littleEndian ? value >> 8 : value)
+    };
+    out.write(reinterpret_cast<const char*>(bytes), sizeof(bytes));
+}
+
+void writeU32(std::ofstream& out, uint32_t value, bool littleEndian)
+{
+    const uint8_t bytes[4] = {
+        uint8_t(littleEndian ? value : value >> 24),
+        uint8_t(littleEndian ? value >> 8 : value >> 16),
+        uint8_t(littleEndian ? value >> 16 : value >> 8),
+        uint8_t(littleEndian ? value >> 24 : value)
+    };
+    out.write(reinterpret_cast<const char*>(bytes), sizeof(bytes));
+}
+
+void writePcm24Fixture(const std::filesystem::path& path, bool littleEndian,
+                       const std::vector<int32_t>& samples)
+{
+    const uint32_t dataSize = uint32_t(samples.size() * 3);
+    std::ofstream out(path, std::ios::binary);
+    out.write(littleEndian ? "RIFF" : "RIFX", 4);
+    writeU32(out, 36 + dataSize, littleEndian);
+    out.write("WAVEfmt ", 8);
+    writeU32(out, 16, littleEndian);
+    writeU16(out, 1, littleEndian);
+    writeU16(out, 1, littleEndian);
+    writeU32(out, 48000, littleEndian);
+    writeU32(out, 48000 * 3, littleEndian);
+    writeU16(out, 3, littleEndian);
+    writeU16(out, 24, littleEndian);
+    out.write("data", 4);
+    writeU32(out, dataSize, littleEndian);
+
+    for (int32_t sample : samples) {
+        const uint32_t bits = static_cast<uint32_t>(sample) & 0x00FFFFFFu;
+        const uint8_t bytes[3] = {
+            uint8_t(littleEndian ? bits : bits >> 16),
+            uint8_t(bits >> 8),
+            uint8_t(littleEndian ? bits >> 16 : bits)
+        };
+        out.write(reinterpret_cast<const char*>(bytes), sizeof(bytes));
+    }
+}
+
+void writeExtensibleFixture(const std::filesystem::path& path, uint16_t subFormat,
+                            const std::vector<uint8_t>& sampleBytes, uint16_t bitsPerSample)
+{
+    constexpr bool littleEndian = true;
+    constexpr uint16_t channels = 1;
+    constexpr uint32_t sampleRate = 48000;
+    constexpr uint32_t fmtChunkSize = 40;
+    const uint16_t blockAlign = channels * bitsPerSample / 8;
+    const uint32_t dataSize = uint32_t(sampleBytes.size());
+
+    std::ofstream out(path, std::ios::binary);
+    out.write("RIFF", 4);
+    writeU32(out, 4 + 8 + fmtChunkSize + 8 + dataSize, littleEndian);
+    out.write("WAVEfmt ", 8);
+    writeU32(out, fmtChunkSize, littleEndian);
+    writeU16(out, 0xFFFE, littleEndian);
+    writeU16(out, channels, littleEndian);
+    writeU32(out, sampleRate, littleEndian);
+    writeU32(out, sampleRate * blockAlign, littleEndian);
+    writeU16(out, blockAlign, littleEndian);
+    writeU16(out, bitsPerSample, littleEndian);
+    writeU16(out, 22, littleEndian); // extension size
+    writeU16(out, bitsPerSample, littleEndian); // valid bits per sample
+    writeU32(out, 0, littleEndian); // channel mask
+    writeU32(out, subFormat, littleEndian); // PCM or IEEE-float GUID data1
+    const uint8_t guidTail[12] = {0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0xAA, 0x00, 0x38, 0x9B, 0x71};
+    out.write(reinterpret_cast<const char*>(guidTail), sizeof(guidTail));
+    out.write("data", 4);
+    writeU32(out, dataSize, littleEndian);
+    out.write(reinterpret_cast<const char*>(sampleBytes.data()), sampleBytes.size());
 }
 
 wm::Wave makeTestWave(uint32_t numFrames, uint16_t channels, uint16_t bitDepth, uint32_t sampleRate,
@@ -68,6 +152,46 @@ void checkSequentialReadMatchesOracle(const std::filesystem::path& path)
     }
 }
 
+template <typename Sample, unsigned Bits>
+void checkPcmQuantizer()
+{
+    constexpr int64_t scale = int64_t{1} << (Bits - 1);
+    constexpr int32_t minimum = static_cast<int32_t>(-scale);
+    constexpr int32_t maximum = static_cast<int32_t>(scale - 1);
+    const Sample lsb = Sample{1} / static_cast<Sample>(scale);
+    const auto quantize = [](Sample value) { return wm::detail::quantizeSignedPcm<Sample, Bits>(value); };
+    const auto dequantize = [](int32_t value) { return wm::detail::dequantizeSignedPcm<Sample, Bits>(value); };
+
+    CAPTURE(sizeof(Sample));
+    CAPTURE(Bits);
+
+    CHECK(quantize(Sample{0}) == 0);
+    CHECK(quantize(static_cast<Sample>(0.4) * lsb) == 0);
+    CHECK(quantize(static_cast<Sample>(-0.4) * lsb) == 0);
+    CHECK(quantize(static_cast<Sample>(0.5) * lsb) == 1);
+    CHECK(quantize(static_cast<Sample>(-0.5) * lsb) == -1);
+    CHECK(quantize(static_cast<Sample>(0.6) * lsb) == 1);
+    CHECK(quantize(static_cast<Sample>(-0.6) * lsb) == -1);
+    CHECK(quantize(Sample{-1}) == minimum);
+    CHECK(quantize(Sample{1}) == maximum);
+    CHECK(quantize(Sample{-2}) == minimum);
+    CHECK(quantize(Sample{2}) == maximum);
+    CHECK(quantize(std::numeric_limits<Sample>::quiet_NaN()) == 0);
+    CHECK(quantize(-std::numeric_limits<Sample>::infinity()) == minimum);
+    CHECK(quantize(std::numeric_limits<Sample>::infinity()) == maximum);
+
+    CHECK(dequantize(minimum) == Sample{-1});
+    CHECK(dequantize(0) == Sample{0});
+
+    if constexpr (Bits <= std::numeric_limits<Sample>::digits) {
+        for (int32_t code : {minimum, int32_t(minimum + 1), int32_t(-1), int32_t(0), int32_t(1),
+                             int32_t(maximum - 1), maximum}) {
+            const Sample decoded = dequantize(code);
+            CHECK(quantize(decoded) == code);
+        }
+    }
+}
+
 } // namespace
 
 // ============================================================================
@@ -93,6 +217,180 @@ TEST_CASE("WaveFileReader matches wm::Wave::open() across every supported bit de
             }
         }
     }
+}
+
+TEST_CASE("internal file positioning preserves offsets beyond 2 GiB")
+{
+    wm::detail::FileHandle file(std::tmpfile());
+    REQUIRE(static_cast<bool>(file));
+
+    constexpr uint64_t offset = (uint64_t(1) << 31) + 123;
+    REQUIRE(wm::detail::seekFile(file.get(), offset));
+
+    uint64_t actualOffset = 0;
+    REQUIRE(wm::detail::tellFile(file.get(), actualOffset));
+    CHECK(actualOffset == offset);
+}
+
+TEST_CASE("integer PCM quantization is consistent for float and double samples")
+{
+    checkPcmQuantizer<float, 8>();
+    checkPcmQuantizer<float, 16>();
+    checkPcmQuantizer<float, 24>();
+    checkPcmQuantizer<float, 32>();
+    checkPcmQuantizer<double, 8>();
+    checkPcmQuantizer<double, 16>();
+    checkPcmQuantizer<double, 24>();
+    checkPcmQuantizer<double, 32>();
+}
+
+TEST_CASE("unsigned 8-bit WAVE PCM uses 128 as digital zero")
+{
+    CHECK(wm::detail::encodePcm8Sample(-1.f) == 0);
+    CHECK(wm::detail::encodePcm8Sample(0.f) == 128);
+    CHECK(wm::detail::encodePcm8Sample(1.f) == 255);
+    CHECK(wm::detail::decodePcm8Sample<float>(0) == -1.f);
+    CHECK(wm::detail::decodePcm8Sample<float>(128) == 0.f);
+    CHECK(wm::detail::decodePcm8Sample<float>(255) == 127.f / 128.f);
+
+    for (uint32_t byte = 0; byte <= 255; ++byte) {
+        const float decoded = wm::detail::decodePcm8Sample<float>(static_cast<uint8_t>(byte));
+        CHECK(wm::detail::encodePcm8Sample(decoded) == byte);
+    }
+}
+
+TEST_CASE("24-bit PCM decoding handles signed extrema in RIFF and RIFX files")
+{
+    const std::vector<int32_t> samples = {-8388608, -8388607, -1, 0, 1, 8388607};
+
+    for (bool littleEndian : {true, false}) {
+        CAPTURE(littleEndian);
+        const auto path = tempWavPath(littleEndian ? "pcm24_riff" : "pcm24_rifx");
+        writePcm24Fixture(path, littleEndian, samples);
+
+        wm::WaveFileReader reader(path.string());
+        REQUIRE(reader.getNumFrames() == samples.size());
+        CHECK(reader.isLittleEndian() == littleEndian);
+
+        std::vector<float> decoded(samples.size());
+        REQUIRE(reader.readFrames(0, uint32_t(samples.size()), decoded.data()) == samples.size());
+        for (size_t i = 0; i < samples.size(); ++i) {
+            CHECK(decoded[i] == float(samples[i]) / 8388608.f);
+        }
+
+        reader.close();
+        std::filesystem::remove(path);
+    }
+}
+
+TEST_CASE("24-bit PCM encoding rounds to nearest and writes file byte order")
+{
+    struct EncodeCase {
+        float input;
+        int32_t expected;
+    };
+
+    constexpr float lsb = 1.f / 8388608.f;
+    const std::vector<EncodeCase> cases = {
+        {0.f, 0},
+        {0.4f * lsb, 0},
+        {0.5f * lsb, 1},
+        {0.6f * lsb, 1},
+        {-0.4f * lsb, 0},
+        {-0.5f * lsb, -1},
+        {-0.6f * lsb, -1},
+        {-1.f, -8388608},
+        {1.f, 8388607},
+        {-2.f, -8388608},
+        {2.f, 8388607},
+        {std::numeric_limits<float>::quiet_NaN(), 0}
+    };
+
+    for (bool littleEndian : {true, false}) {
+        CAPTURE(littleEndian);
+        for (const EncodeCase& testCase : cases) {
+            CAPTURE(testCase.input);
+            uint8_t encoded[3]{};
+            wm::detail::encodePcm24Sample(testCase.input, littleEndian, encoded);
+
+            const uint32_t bits = static_cast<uint32_t>(testCase.expected) & 0x00FFFFFFu;
+            CHECK(encoded[0] == uint8_t(littleEndian ? bits : bits >> 16));
+            CHECK(encoded[1] == uint8_t(bits >> 8));
+            CHECK(encoded[2] == uint8_t(littleEndian ? bits >> 16 : bits));
+        }
+    }
+}
+
+TEST_CASE("WAVE_FORMAT_EXTENSIBLE resolves PCM and IEEE-float sub-formats")
+{
+    SUBCASE("16-bit PCM")
+    {
+        const auto path = tempWavPath("extensible_pcm");
+        const std::vector<int16_t> samples = {-32768, -1, 0, 1, 32767};
+        std::vector<uint8_t> bytes;
+        bytes.reserve(samples.size() * 2);
+        for (int16_t sample : samples) {
+            const uint16_t bits = static_cast<uint16_t>(sample);
+            bytes.push_back(uint8_t(bits));
+            bytes.push_back(uint8_t(bits >> 8));
+        }
+        writeExtensibleFixture(path, 1, bytes, 16);
+
+        wm::WaveFileReader reader(path.string());
+        CHECK(reader.getAudioFormat() == 1);
+        CHECK(reader.getSampleBitDepth() == 16);
+        REQUIRE(reader.getNumFrames() == samples.size());
+
+        std::vector<float> decoded(samples.size());
+        REQUIRE(reader.readFrames(0, uint32_t(samples.size()), decoded.data()) == samples.size());
+        for (size_t i = 0; i < samples.size(); ++i) {
+            CHECK(decoded[i] == float(samples[i]) / 32768.f);
+        }
+
+        reader.close();
+        std::filesystem::remove(path);
+    }
+
+    SUBCASE("32-bit IEEE float")
+    {
+        const auto path = tempWavPath("extensible_float");
+        const std::vector<float> samples = {-1.f, -0.25f, 0.f, 0.5f, 1.f};
+        std::vector<uint8_t> bytes;
+        bytes.reserve(samples.size() * sizeof(float));
+        for (float sample : samples) {
+            uint32_t bits = 0;
+            std::memcpy(&bits, &sample, sizeof(bits));
+            bytes.push_back(uint8_t(bits));
+            bytes.push_back(uint8_t(bits >> 8));
+            bytes.push_back(uint8_t(bits >> 16));
+            bytes.push_back(uint8_t(bits >> 24));
+        }
+        writeExtensibleFixture(path, 3, bytes, 32);
+
+        wm::WaveFileReader reader(path.string());
+        CHECK(reader.getAudioFormat() == 3);
+        CHECK(reader.getSampleBitDepth() == 32);
+        REQUIRE(reader.getNumFrames() == samples.size());
+
+        std::vector<float> decoded(samples.size());
+        REQUIRE(reader.readFrames(0, uint32_t(samples.size()), decoded.data()) == samples.size());
+        for (size_t i = 0; i < samples.size(); ++i) {
+            CHECK(decoded[i] == samples[i]);
+        }
+
+        reader.close();
+        std::filesystem::remove(path);
+    }
+}
+
+TEST_CASE("WAVE_FORMAT_EXTENSIBLE rejects unsupported sub-formats")
+{
+    const auto path = tempWavPath("extensible_unsupported");
+    writeExtensibleFixture(path, 2, {0, 0}, 16);
+
+    CHECK_THROWS(wm::WaveFileReader(path.string()));
+
+    std::filesystem::remove(path);
 }
 
 // ============================================================================
@@ -322,6 +620,32 @@ TEST_CASE("a file missing the fmt and data chunks throws on open, matching wm::W
         out.write(reinterpret_cast<const char*>(&riffSize), 4);
         out.write("WAVE", 4);
         // No fmt or data chunk follows.
+    }
+
+    CHECK_THROWS(wm::Wave(path.string()));
+    CHECK_THROWS(wm::WaveFileReader(path.string()));
+
+    std::filesystem::remove(path);
+}
+
+TEST_CASE("a data chunk whose declared payload exceeds the file is rejected")
+{
+    const auto path = tempWavPath("truncated_payload");
+    {
+        std::ofstream out(path, std::ios::binary);
+        out.write("RIFF", 4);
+        writeU32(out, 38, true); // Physical RIFF length: 46 bytes.
+        out.write("WAVEfmt ", 8);
+        writeU32(out, 16, true);
+        writeU16(out, 1, true);
+        writeU16(out, 1, true);
+        writeU32(out, 44100, true);
+        writeU32(out, 44100 * 2, true);
+        writeU16(out, 2, true);
+        writeU16(out, 16, true);
+        out.write("data", 4);
+        writeU32(out, 4, true); // Claims two samples...
+        writeU16(out, 1234, true); // ...but only one is present.
     }
 
     CHECK_THROWS(wm::Wave(path.string()));
