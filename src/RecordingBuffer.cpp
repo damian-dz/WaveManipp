@@ -9,8 +9,11 @@ void RecordingBuffer::reset(uint16_t numChannels, uint32_t sampleRate, uint16_t 
     m_sampleRate  = sampleRate;
     m_bitDepth    = bitDepth;
     m_samples.clear();
-    if (reserveFrames)
+    if (reserveFrames) {
         m_samples.reserve(static_cast<size_t>(reserveFrames) * numChannels);
+    } else {
+        std::vector<float>().swap(m_samples);
+    }
     m_frameCount.store(0, std::memory_order_relaxed);
 }
 
