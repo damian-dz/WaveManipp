@@ -172,6 +172,15 @@ wm::dsp::invertRange(wave, 0, 44100);                   // phase flip first seco
 wm::dsp::fadeIn(wave, 0, 44100);
 wm::dsp::fadeOut(wave, wave.getNumFrames() - 44100, wave.getNumFrames());
 
+// Reverb
+wm::dsp::ReverbParams reverbParams;
+reverbParams.roomSize = 0.7f;
+wm::dsp::reverb(wave, 0, wave.getNumFrames(), reverbParams);
+
+// Stateful block reverb for streaming/buffered processing
+wm::dsp::ReverbProcessor reverb(44100, 2, reverbParams);
+reverb.process(interleavedFloatFrames, frameCount);
+
 // Reverse
 wm::dsp::reverse(wave);                                 // reverse all channels
 wm::dsp::reverseChannel(wave, 0);                       // reverse left channel only

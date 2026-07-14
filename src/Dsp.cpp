@@ -136,48 +136,26 @@ void fadeOut(Wave& wave, uint32_t startFrame, uint32_t endFrame, FadeCurve curve
 
 // ---- Reverb -----------------------------------------------------------------
 
-namespace {
-
-struct CombFilter {
-    std::vector<float> buf;
-    size_t pos   = 0;
-    float  store = 0.f;
-
-    void init(size_t size) { buf.assign(size, 0.f); pos = 0; store = 0.f; }
-
-    float process(float input, float feedback, float damp1, float damp2)
-    {
-        float out = buf[pos];
-        store = out * damp2 + store * damp1;
-        buf[pos] = input + store * feedback;
-        if (++pos >= buf.size()) pos = 0;
-        return out;
-    }
-};
-
-struct AllpassFilter {
-    std::vector<float> buf;
-    size_t pos = 0;
-
-    void init(size_t size) { buf.assign(size, 0.f); pos = 0; }
-
-    float process(float input)
-    {
-        float out = buf[pos];
-        buf[pos] = input + out * 0.5f;
-        if (++pos >= buf.size()) pos = 0;
-        return out - input;
-    }
-};
-
-} // namespace
-
-void reverb(Wave& wave, uint32_t startFrame, uint32_t endFrame, const ReverbParams& params)
+ReverbProcessor::ReverbProcessor(uint32_t sampleRate,
+                                 uint16_t channels,
+                                 const ReverbParams& params)
 {
-    const uint32_t end = std::min(endFrame, wave.getNumFrames());
-    if (startFrame >= end) return;
-    const uint16_t nc    = wave.getNumChannels();
-    const float    scale = static_cast<float>(wave.getSampleRate()) / 44100.f;
+    reset(sampleRate, channels, params);
+}
+
+void ReverbProcessor::reset(uint32_t sampleRate,
+                            uint16_t channels,
+                            const ReverbParams& params)
+{
+    if (sampleRate == 0)
+        throwError("Sample rate must be greater than zero.",
+                   "wm::dsp::ReverbProcessor::reset");
+    if (channels == 0)
+        throwError("Channel count must be greater than zero.",
+                   "wm::dsp::ReverbProcessor::reset");
+
+    m_channels = channels;
+    const float scale = static_cast<float>(sampleRate) / 44100.f;
 
     // Delay lengths tuned at 44100 Hz (Freeverb reference values)
     static const int kCombDelays[] = { 1116, 1188, 1277, 1356, 1422, 1491, 1557, 1617 };
@@ -185,33 +163,70 @@ void reverb(Wave& wave, uint32_t startFrame, uint32_t endFrame, const ReverbPara
     constexpr int kNumCombs = 8;
     constexpr int kNumAp    = 4;
 
-    const float feedback = 0.7f + params.roomSize * 0.28f;
-    const float damp1    = params.damping * 0.4f;
-    const float damp2    = 1.f - damp1;
-    const float wet      = params.wetMix;
-    const float dry      = 1.f - wet;
+    m_feedback = 0.7f + params.roomSize * 0.28f;
+    m_damp1    = params.damping * 0.4f;
+    m_damp2    = 1.f - m_damp1;
+    m_wet      = params.wetMix;
+    m_dry      = 1.f - m_wet;
 
-    float* buf = wave.audioData(); // bump the content revision once, not per sample
-    for (uint16_t ch = 0; ch < nc; ++ch) {
-        CombFilter    combs[kNumCombs];
-        AllpassFilter aps[kNumAp];
-
-        for (int i = 0; i < kNumCombs; ++i)
-            combs[i].init(static_cast<size_t>(kCombDelays[i] * scale + 0.5f));
-        for (int i = 0; i < kNumAp; ++i)
-            aps[i].init(static_cast<size_t>(kApDelays[i] * scale + 0.5f));
-
-        for (uint32_t fr = startFrame; fr < end; ++fr) {
-            const float input = buf[fr * nc + ch];
-            float out = 0.f;
-            for (int i = 0; i < kNumCombs; ++i)
-                out += combs[i].process(input, feedback, damp1, damp2);
-            out *= 0.125f; // normalize 8 summed combs
-            for (int i = 0; i < kNumAp; ++i)
-                out = aps[i].process(out);
-            buf[fr * nc + ch] = dry * input + wet * out;
+    m_channelStates.assign(channels, ChannelState{});
+    for (ChannelState& channel : m_channelStates) {
+        channel.combs.resize(kNumCombs);
+        channel.allpasses.resize(kNumAp);
+        for (int i = 0; i < kNumCombs; ++i) {
+            const size_t delay =
+                std::max<size_t>(1, static_cast<size_t>(kCombDelays[i] * scale + 0.5f));
+            channel.combs[i].buffer.assign(delay, 0.f);
+            channel.combs[i].position = 0;
+            channel.combs[i].store = 0.f;
+        }
+        for (int i = 0; i < kNumAp; ++i) {
+            const size_t delay =
+                std::max<size_t>(1, static_cast<size_t>(kApDelays[i] * scale + 0.5f));
+            channel.allpasses[i].buffer.assign(delay, 0.f);
+            channel.allpasses[i].position = 0;
         }
     }
+}
+
+void ReverbProcessor::process(float* interleavedFrames, uint32_t frameCount)
+{
+    if (!interleavedFrames || frameCount == 0 || m_channels == 0) return;
+
+    for (uint16_t ch = 0; ch < m_channels; ++ch) {
+        ChannelState& channel = m_channelStates[ch];
+        for (uint32_t fr = 0; fr < frameCount; ++fr) {
+            const size_t sampleIndex =
+                static_cast<size_t>(fr) * m_channels + ch;
+            const float input = interleavedFrames[sampleIndex];
+            float out = 0.f;
+            for (CombFilter& comb : channel.combs) {
+                float combOut = comb.buffer[comb.position];
+                comb.store = combOut * m_damp2 + comb.store * m_damp1;
+                comb.buffer[comb.position] = input + comb.store * m_feedback;
+                if (++comb.position >= comb.buffer.size()) comb.position = 0;
+                out += combOut;
+            }
+            out *= 0.125f; // normalize 8 summed combs
+            for (AllpassFilter& allpass : channel.allpasses) {
+                const float allpassOut = allpass.buffer[allpass.position];
+                allpass.buffer[allpass.position] = out + allpassOut * 0.5f;
+                if (++allpass.position >= allpass.buffer.size()) allpass.position = 0;
+                out = allpassOut - out;
+            }
+            interleavedFrames[sampleIndex] = m_dry * input + m_wet * out;
+        }
+    }
+}
+
+void reverb(Wave& wave, uint32_t startFrame, uint32_t endFrame, const ReverbParams& params)
+{
+    const uint32_t end = std::min(endFrame, wave.getNumFrames());
+    if (startFrame >= end) return;
+    const uint16_t nc = wave.getNumChannels();
+    float* buf = wave.audioData(); // bump the content revision once, not per sample
+    ReverbProcessor processor(wave.getSampleRate(), nc, params);
+    processor.process(buf + static_cast<size_t>(startFrame) * nc, end - startFrame);
 }
 
 std::vector<float> makeWindow(size_t windowSize, WindowFunction window)

@@ -7,6 +7,9 @@
 
 #include "Wave.hpp"
 
+#include <cstddef>
+#include <vector>
+
 /*!
  * \namespace wm::dsp
  * \brief Utility DSP functions for in-place Wave editing and spectral analysis.
@@ -158,6 +161,53 @@ struct ReverbParams {
     float roomSize = 0.5f;  ///< Comb feedback amount (0 = tiny room, 1 = large hall)
     float damping  = 0.5f;  ///< High-frequency absorption (0 = bright, 1 = dark)
     float wetMix   = 0.3f;  ///< Dry/wet blend (0 = all dry, 1 = all wet)
+};
+
+/*!
+ * \brief Stateful Schroeder/Freeverb-style reverb processor for interleaved float blocks.
+ *
+ * The processor owns delay-line state and can be fed consecutive blocks to produce
+ * the same result as reverb() over one contiguous range. State is initialized to
+ * silence on construction/reset, matching reverb()'s selected-range reset point.
+ * The caller controls tail handling by deciding how many frames to process; processing
+ * only the selected range clips the tail at that range's end.
+ */
+class ReverbProcessor {
+public:
+    ReverbProcessor(uint32_t sampleRate,
+                    uint16_t channels,
+                    const ReverbParams& params = {});
+
+    void reset(uint32_t sampleRate,
+               uint16_t channels,
+               const ReverbParams& params = {});
+
+    void process(float* interleavedFrames, uint32_t frameCount);
+
+private:
+    struct CombFilter {
+        std::vector<float> buffer;
+        size_t position = 0;
+        float store = 0.f;
+    };
+
+    struct AllpassFilter {
+        std::vector<float> buffer;
+        size_t position = 0;
+    };
+
+    struct ChannelState {
+        std::vector<CombFilter> combs;
+        std::vector<AllpassFilter> allpasses;
+    };
+
+    uint16_t m_channels = 0;
+    float m_feedback = 0.f;
+    float m_damp1 = 0.f;
+    float m_damp2 = 1.f;
+    float m_wet = 0.f;
+    float m_dry = 1.f;
+    std::vector<ChannelState> m_channelStates;
 };
 
 /*!

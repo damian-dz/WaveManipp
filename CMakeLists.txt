@@ -38,6 +38,7 @@ FetchContent_MakeAvailable(doctest)
 
 add_executable(WaveManipp_tests
     tests/WaveManippTestMain.cpp
+    tests/ReverbProcessorTests.cpp
     tests/WaveRevisionTests.cpp
     tests/WaveFileReaderTests.cpp
     tests/WaveFileWriterTests.cpp
