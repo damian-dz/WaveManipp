@@ -18,20 +18,47 @@ static inline double wrapPhase(double x)
 
 } // anonymous namespace
 
-void stretchTempo(Wave& wave, float factor, size_t fftSize)
+PhaseVocoderTimeStretcher::PhaseVocoderTimeStretcher(size_t fftSize)
+    : m_fftSize(fftSize)
 {
-    if (factor <= 0.f || wave.isEmpty()) return;
-    if (std::abs(factor - 1.f) < 1e-5f) return;
+}
 
-    const size_t   N           = fftSize;
+uint32_t PhaseVocoderTimeStretcher::outputFrameCount(uint32_t inputFrames,
+                                                     float factor) const
+{
+    if (factor <= 0.f || inputFrames == 0) return inputFrames;
+    return static_cast<uint32_t>(std::max<int64_t>(
+        1,
+        static_cast<int64_t>(std::round(inputFrames * static_cast<double>(factor)))));
+}
+
+std::vector<float> PhaseVocoderTimeStretcher::render(
+    const float* interleavedInput,
+    uint32_t inputFrames,
+    uint16_t channels,
+    float factor) const
+{
+    if (!interleavedInput || inputFrames == 0 || channels == 0) return {};
+    if (factor <= 0.f) {
+        return std::vector<float>(
+            interleavedInput,
+            interleavedInput +
+                static_cast<size_t>(inputFrames) * channels);
+    }
+    if (std::abs(factor - 1.f) < 1e-5f) {
+        return std::vector<float>(
+            interleavedInput,
+            interleavedInput +
+                static_cast<size_t>(inputFrames) * channels);
+    }
+
+    const size_t   N           = m_fftSize;
     const size_t   Ha          = N / 4;   // analysis hop  (75 % overlap)
     const size_t   Hs          = std::max<size_t>(1,
         static_cast<size_t>(std::round(Ha * static_cast<double>(factor))));
 
-    const uint32_t inputFrames  = wave.getNumFrames();
-    const int      numChannels  = static_cast<int>(wave.getNumChannels());
-    const uint32_t outputFrames = static_cast<uint32_t>(std::max<int64_t>(1,
-        static_cast<int64_t>(std::round(inputFrames * static_cast<double>(factor)))));
+    const int      numChannels  = static_cast<int>(channels);
+    const uint32_t outputFrames = outputFrameCount(inputFrames, factor);
 
     // Number of analysis frames needed to cover all input samples.
     const size_t numAFrames = (static_cast<size_t>(inputFrames) + Ha - 1) / Ha + 2;
@@ -54,7 +81,6 @@ void stretchTempo(Wave& wave, float factor, size_t fftSize)
         }
     }
 
-    const float*  src  = wave.constAudioData();
     fft::Plan     plan(N);
 
     std::vector<double> re(N), im(N);
@@ -71,7 +97,8 @@ void stretchTempo(Wave& wave, float factor, size_t fftSize)
             for (size_t i = 0; i < N; ++i) {
                 const ptrdiff_t s = pos_a + static_cast<ptrdiff_t>(i);
                 re[i] = (s >= 0 && s < static_cast<ptrdiff_t>(inputFrames))
-                        ? static_cast<double>(src[s * numChannels + ch]) * win[i]
+                        ? static_cast<double>(
+                              interleavedInput[s * numChannels + ch]) * win[i]
                         : 0.0;
                 im[i] = 0.0;
             }
@@ -137,9 +164,30 @@ void stretchTempo(Wave& wave, float factor, size_t fftSize)
                 static_cast<float>(outBuf[i * numChannels + ch] / norm);
     }
 
+    outBuf.resize(trimFrames * channels);
+    return outBuf;
+}
+
+void stretchTempo(Wave& wave, float factor, size_t fftSize)
+{
+    if (factor <= 0.f || wave.isEmpty()) return;
+    if (std::abs(factor - 1.f) < 1e-5f) return;
+
+    PhaseVocoderTimeStretcher stretcher(fftSize);
+    std::vector<float> outBuf = stretcher.render(
+        wave.constAudioData(),
+        wave.getNumFrames(),
+        wave.getNumChannels(),
+        factor);
+    if (outBuf.empty()) return;
+
+    const uint32_t trimFrames = static_cast<uint32_t>(
+        outBuf.size() / wave.getNumChannels());
     Wave result(static_cast<uint32_t>(trimFrames), wave.getNumChannels(),
                 wave.getSampleBitDepth(), wave.getSampleRate());
-    result.setAudio(outBuf.data(), static_cast<uint32_t>(trimFrames * numChannels));
+    result.setAudio(
+        outBuf.data(),
+        static_cast<uint32_t>(trimFrames * wave.getNumChannels()));
     wave = std::move(result);
 }
 

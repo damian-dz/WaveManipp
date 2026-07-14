@@ -181,6 +181,11 @@ wm::dsp::reverb(wave, 0, wave.getNumFrames(), reverbParams);
 wm::dsp::ReverbProcessor reverb(44100, 2, reverbParams);
 reverb.process(interleavedFloatFrames, frameCount);
 
+// Offline phase-vocoder time stretching
+wm::dsp::stretchTempo(wave, 1.25f);                    // slower/longer, pitch preserved
+wm::dsp::PhaseVocoderTimeStretcher stretcher(2048);
+auto stretched = stretcher.render(interleavedFloatFrames, frameCount, channels, 0.8f);
+
 // Reverse
 wm::dsp::reverse(wave);                                 // reverse all channels
 wm::dsp::reverseChannel(wave, 0);                       // reverse left channel only

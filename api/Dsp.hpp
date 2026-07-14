@@ -232,6 +232,32 @@ void reverb(Wave& wave, uint32_t startFrame, uint32_t endFrame, const ReverbPara
  */
 void stretchTempo(Wave& wave, float factor, size_t fftSize = 2048);
 
+/*!
+ * \brief Offline phase-vocoder time stretcher for interleaved float PCM.
+ * \details This is the reusable implementation behind stretchTempo(). It owns
+ * the phase-vocoder analysis/synthesis algorithm while callers decide where
+ * source and destination samples live. It is currently an offline renderer:
+ * the whole input range is provided at once and the whole stretched output is
+ * returned. WaveManippStudio's AudioSource adapter should use this class rather
+ * than duplicating phase-vocoder state in the app layer.
+ */
+class PhaseVocoderTimeStretcher {
+public:
+    explicit PhaseVocoderTimeStretcher(size_t fftSize = 2048);
+
+    size_t fftSize() const noexcept { return m_fftSize; }
+
+    uint32_t outputFrameCount(uint32_t inputFrames, float factor) const;
+
+    std::vector<float> render(const float* interleavedInput,
+                              uint32_t inputFrames,
+                              uint16_t channels,
+                              float factor) const;
+
+private:
+    size_t m_fftSize = 2048;
+};
+
 // ---- Reverse ----------------------------------------------------------------
 
 /*!
