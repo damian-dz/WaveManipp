@@ -238,8 +238,8 @@ void stretchTempo(Wave& wave, float factor, size_t fftSize = 2048);
  * the phase-vocoder analysis/synthesis algorithm while callers decide where
  * source and destination samples live. It is currently an offline renderer:
  * the whole input range is provided at once and the whole stretched output is
- * returned. WaveManippStudio's AudioSource adapter should use this class rather
- * than duplicating phase-vocoder state in the app layer.
+ * returned. A host application's own audio-source adapter should use this
+ * class rather than duplicating phase-vocoder state in the app layer.
  */
 class PhaseVocoderTimeStretcher {
 public:
