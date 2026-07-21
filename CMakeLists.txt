@@ -1,3 +1,10 @@
+# Standard for this project's own targets, whether built standalone or
+# nested as a subdirectory of a host project. When nested, this overrides
+# the host's own default for this project's targets only, without affecting
+# the host's other, unrelated subdirectories.
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
 find_package(OpenMP)
 
 add_library(WaveManipp STATIC
