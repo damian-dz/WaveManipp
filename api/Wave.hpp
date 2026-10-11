@@ -61,8 +61,13 @@ private:
         FmtSubChunk wave;
     };
 
-    Header m_header;
-    DataSubChunk m_dataSubChunk;
+    // Both structs are fwrite()-ed byte for byte as the canonical 44-byte header,
+    // so they must not contain padding.
+    static_assert(sizeof(Header) == 36, "Header must match the on-disk RIFF+fmt layout");
+    static_assert(sizeof(DataSubChunk) == 8, "DataSubChunk must match the on-disk layout");
+
+    Header m_header{};
+    DataSubChunk m_dataSubChunk{};
     bool m_isLittleEndian;
     uint32_t m_numSamples;
     std::shared_ptr<float[]> m_buffer;
@@ -389,7 +394,7 @@ public:
      */
     const float& operator()(uint32_t sample, int channel) const;
     /*! \brief Shares another Wave's metadata and audio buffer with this Wave. */
-    void operator=(const Wave& other);
+    Wave& operator=(const Wave& other);
 };
 }
 

@@ -20,16 +20,13 @@ Wave::Wave() :
     m_isLittleEndian(true),
     m_numSamples(0),
     m_revision(allocateRevision())
-{
-    zeroInitHeader();
-}
+{}
 
 Wave::Wave(const char* filename) :
     m_isLittleEndian(true),
     m_numSamples(0),
     m_revision(allocateRevision())
 {
-    zeroInitHeader();
     open(filename);
 }
 
@@ -38,7 +35,6 @@ Wave::Wave(const std::string& filename) :
     m_numSamples(0),
     m_revision(allocateRevision())
 {
-    zeroInitHeader();
     open(filename);
 }
 
@@ -47,7 +43,6 @@ Wave::Wave(uint32_t numFrames, uint16_t numChannels, uint16_t bitDepth, uint32_t
     m_numSamples(numChannels * numFrames),
     m_revision(allocateRevision())
 {
-    zeroInitHeader();
     setFourCharacterCodes();
     m_waveProperties.setNumChannels(numChannels);
     reserveMemory(m_numSamples, true);
@@ -57,15 +52,7 @@ Wave::Wave(uint32_t numFrames, uint16_t numChannels, uint16_t bitDepth, uint32_t
     m_waveProperties.setFmtChunkSize(16);
 }
 
-Wave::Wave(const Wave& other) :
-    m_header(other.m_header),
-    m_dataSubChunk(other.m_dataSubChunk),
-    m_isLittleEndian(other.m_isLittleEndian),
-    m_numSamples(other.m_numSamples),
-    m_buffer(other.m_buffer),
-    m_waveProperties(other.m_waveProperties),
-    m_revision(other.m_revision)
-{}
+Wave::Wave(const Wave& other) = default;
 
 Wave::~Wave() = default;
 
@@ -941,19 +928,7 @@ const float& Wave::operator()(uint32_t sample, int channel) const
     return m_buffer[sample * m_waveProperties.getNumChannels() + channel];
 }
 
-void Wave::operator=(const Wave& other)
-{
-    if (this == &other) {
-        return;
-    }
-    m_header        = other.m_header;
-    m_dataSubChunk  = other.m_dataSubChunk;
-    m_isLittleEndian = other.m_isLittleEndian;
-    m_numSamples    = other.m_numSamples;
-    m_waveProperties = other.m_waveProperties;
-    m_buffer        = other.m_buffer;
-    m_revision      = other.m_revision;
-}
+Wave& Wave::operator=(const Wave& other) = default;
 
 std::ostream& operator<<(std::ostream& os, const Wave& wav)
 {

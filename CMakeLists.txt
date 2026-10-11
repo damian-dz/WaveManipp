@@ -48,6 +48,7 @@ add_executable(WaveManipp_tests
     tests/PhaseVocoderTimeStretcherTests.cpp
     tests/ReverbProcessorTests.cpp
     tests/WaveRevisionTests.cpp
+    tests/WaveCopySemanticsTests.cpp
     tests/WaveFileReaderTests.cpp
     tests/WaveFileWriterTests.cpp
 )
